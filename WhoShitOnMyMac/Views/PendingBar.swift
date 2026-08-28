@@ -44,7 +44,27 @@ struct DryRunSheet: View {
             if !state.lastExecuteFailed.isEmpty {
                 Text("失败项").bold()
                 ForEach(state.lastExecuteFailed, id: \.0.path) { item in
-                    Text("\(item.0.path) — \(item.1)").foregroundStyle(.red).font(.caption)
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(item.0.path)
+                            .font(.caption.monospaced())
+                        Text(item.1)
+                            .font(.caption)
+                            .foregroundStyle(.red)
+                    }
+                }
+                HStack {
+                    Button("打开完全磁盘访问") {
+                        state.permission.openFullDiskAccessSettings()
+                    }
+                    Button("打开应用管理") {
+                        state.permission.openAppManagementSettings()
+                    }
+                    if state.canRetryFailedItemsWithAdministratorPrivileges {
+                        Button("使用管理员权限重试") {
+                            state.runTrashWithAdministratorPrivileges()
+                        }
+                        .disabled(state.isTrashing)
+                    }
                 }
             }
             HStack {
@@ -64,4 +84,5 @@ struct DryRunSheet: View {
             }
         }
     }
+
 }

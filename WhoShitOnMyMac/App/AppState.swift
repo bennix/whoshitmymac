@@ -157,6 +157,11 @@ final class AppState {
             try? OperationLog(fileURL: AppPaths.operationsLog).append(
                 "trash ok=\(outcome.ok) failed=\(outcome.failed.count) delta=\(delta)"
             )
+            for failure in outcome.failed {
+                try? OperationLog(fileURL: AppPaths.operationsLog).append(
+                    "trash failed path=\(failure.0.path) error=\(failure.1)"
+                )
+            }
             let succeededPaths = Set(outcome.succeeded.map { PathNormalizer.resolve($0).path })
             let succeededSnapshotNames = Set<String>(pendingQueue.tasks.compactMap { task -> String? in
                 guard task.source == "快照", succeededPaths.contains(PathNormalizer.resolve(task.url).path) else { return nil }
@@ -172,8 +177,61 @@ final class AppState {
                 self.selectedDiffs.subtract(succeededSnapshotNames)
                 self.reconcileInstalledApps(afterRemoving: outcome.succeeded)
                 self.isTrashing = false
-                self.lastMessage = "完成 \(outcome.ok) 项，失败 \(outcome.failed.count)，可用空间变化 \(ByteFormat.string(delta))"
+                if let firstFailure = outcome.failed.first {
+                    self.lastMessage = "完成 \(outcome.ok) 项，失败 \(outcome.failed.count)：\(firstFailure.1)"
+                    self.showDryRun = true
+                } else {
+                    self.lastMessage = "完成 \(outcome.ok) 项，可用空间变化 \(ByteFormat.string(delta))"
+                }
             }
+        }
+    }
+
+    func runTrashWithAdministratorPrivileges() {
+        guard !isTrashing else { return }
+        let failedPaths = Set(lastExecuteFailed.map { PathNormalizer.resolve($0.0).path })
+        let tasks = queue.tasks.filter {
+            failedPaths.contains(PathNormalizer.resolve($0.url).path)
+                && AdministratorTrashRunner.canHandle($0)
+        }
+        guard !tasks.isEmpty else { return }
+        isTrashing = true
+        let attemptedPaths = Set(tasks.map { PathNormalizer.resolve($0.url).path })
+        let unhandledFailures = lastExecuteFailed.filter {
+            !attemptedPaths.contains(PathNormalizer.resolve($0.0).path)
+        }
+        DispatchQueue.global(qos: .userInitiated).async { [weak self] in
+            let outcome = AdministratorTrashRunner().execute(tasks)
+            for failure in outcome.failed {
+                try? OperationLog(fileURL: AppPaths.operationsLog).append(
+                    "admin trash failed path=\(failure.0.path) error=\(failure.1)"
+                )
+            }
+            try? OperationLog(fileURL: AppPaths.operationsLog).append(
+                "admin trash ok=\(outcome.ok) failed=\(outcome.failed.count)"
+            )
+            let succeededPaths = Set(outcome.succeeded.map { PathNormalizer.resolve($0).path })
+            DispatchQueue.main.async {
+                guard let self else { return }
+                self.queue.tasks.removeAll { succeededPaths.contains(PathNormalizer.resolve($0.url).path) }
+                self.reconcileInstalledApps(afterRemoving: outcome.succeeded)
+                self.lastExecuteFailed = unhandledFailures + outcome.failed
+                self.isTrashing = false
+                if self.lastExecuteFailed.isEmpty {
+                    self.lastMessage = "已使用管理员权限将 \(outcome.ok) 个项目移到废纸篓"
+                    self.showDryRun = false
+                } else {
+                    self.lastMessage = "管理员重试完成 \(outcome.ok) 项，仍失败 \(self.lastExecuteFailed.count) 项"
+                }
+            }
+        }
+    }
+
+    var canRetryFailedItemsWithAdministratorPrivileges: Bool {
+        let failedPaths = Set(lastExecuteFailed.map { PathNormalizer.resolve($0.0).path })
+        return queue.tasks.contains {
+            failedPaths.contains(PathNormalizer.resolve($0.url).path)
+                && AdministratorTrashRunner.canHandle($0)
         }
     }
 

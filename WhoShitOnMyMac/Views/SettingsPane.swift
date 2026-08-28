@@ -10,7 +10,7 @@ struct SettingsPane: View {
         Form {
             Section("权限") {
                 LabeledContent("完全磁盘访问", value: state.permissionStatus.hasFullDiskAccess ? "已授予" : "未授予")
-                LabeledContent("应用管理", value: state.permissionStatus.hasAppManagement ? "可用" : "需检查")
+                LabeledContent("应用管理", value: "请在系统设置确认")
                 Button("打开完全磁盘访问") { state.permission.openFullDiskAccessSettings() }
                 Button("打开应用管理") { state.permission.openAppManagementSettings() }
                 Button("重新检测") { state.refreshPermissions() }

@@ -17,9 +17,8 @@ struct AppsPane: View {
                             .font(.callout)
                             .foregroundStyle(.secondary)
                     }
-                    if !state.permissionStatus.hasAppManagement {
-                        Button("打开应用管理权限") { state.permission.openAppManagementSettings() }
-                    }
+                    Button("检查应用管理权限") { state.permission.openAppManagementSettings() }
+                        .help("部分应用受 macOS 应用管理权限保护")
                     Spacer()
                     if !state.isLoadingApps {
                         Text("\(state.installedApps.count) 个应用")

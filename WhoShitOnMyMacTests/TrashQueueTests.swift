@@ -43,4 +43,14 @@ struct TrashQueueTests {
         #expect(outcome.failed.count == 1)
         #expect(trashed == [b])
     }
+
+    @Test func administratorRetryOnlyAcceptsTopLevelApplications() {
+        #expect(AdministratorTrashRunner.canHandle(TrashTask(url: URL(fileURLWithPath: "/Applications/Example.app"), bytes: 0, source: "卸载")))
+        #expect(!AdministratorTrashRunner.canHandle(TrashTask(url: URL(fileURLWithPath: "/Applications/Folder/Example.app"), bytes: 0, source: "卸载")))
+        #expect(!AdministratorTrashRunner.canHandle(TrashTask(url: URL(fileURLWithPath: "/Users/test/Example.app"), bytes: 0, source: "卸载")))
+        #expect(!AdministratorTrashRunner.canHandle(TrashTask(url: URL(fileURLWithPath: "/Applications/readme.txt"), bytes: 0, source: "卸载")))
+        #expect(!AdministratorTrashRunner.canHandle(TrashTask(url: URL(fileURLWithPath: "/System/Applications/Finder.app"), bytes: 0, source: "卸载")))
+        #expect(AdministratorTrashRunner.canHandle(TrashTask(url: URL(fileURLWithPath: "/Library/LaunchDaemons/com.example.helper.plist"), bytes: 0, source: "卸载残留")))
+        #expect(!AdministratorTrashRunner.canHandle(TrashTask(url: URL(fileURLWithPath: "/Library/LaunchDaemons/com.example.helper.plist"), bytes: 0, source: "垃圾")))
+    }
 }

@@ -36,7 +36,8 @@ enum UninstallEngine {
         bundleId: String,
         displayName: String,
         home: URL,
-        otherInstalledIds: Set<String>
+        otherInstalledIds: Set<String>,
+        systemLibrary: URL = URL(fileURLWithPath: "/Library", isDirectory: true)
     ) -> UninstallPlan {
         if Blacklist.blocksBundleId(bundleId) || PathNormalizer.resolve(appURL).path.hasPrefix("/System") {
             return UninstallPlan(appURL: appURL, bundleId: bundleId, residues: [], blocked: true, blockReason: "系统应用不可卸载")
@@ -82,6 +83,34 @@ enum UninstallEngine {
                     match: shared ? .shared : .strong,
                     selectedByDefault: !shared,
                     reason: shared ? "其他已装副本仍在使用" : "Group Container"
+                ))
+            }
+        }
+
+        let commonBundleSegments = Set(["com", "org", "net", "app", "mac", "desktop", "apple"])
+        let identityTokens = Set(bundleId.lowercased().split(separator: ".").map(String.init).filter {
+            $0.count >= 4 && !commonBundleSegments.contains($0)
+        })
+        let auxiliaryRoots = [
+            home.appendingPathComponent(".config", isDirectory: true),
+            systemLibrary.appendingPathComponent("LaunchAgents", isDirectory: true),
+            systemLibrary.appendingPathComponent("LaunchDaemons", isDirectory: true),
+            systemLibrary.appendingPathComponent("PrivilegedHelperTools", isDirectory: true),
+            systemLibrary.appendingPathComponent("Application Support", isDirectory: true)
+        ]
+        for root in auxiliaryRoots {
+            guard let children = try? FileManager.default.contentsOfDirectory(at: root, includingPropertiesForKeys: nil) else { continue }
+            for child in children {
+                let name = child.lastPathComponent.lowercased()
+                let fullMatch = name.contains(bundleId.lowercased())
+                let token = identityTokens.first(where: { name.contains($0) })
+                guard fullMatch || token != nil,
+                      !residues.contains(where: { PathNormalizer.resolve($0.url).path == PathNormalizer.resolve(child).path }) else { continue }
+                residues.append(ResidueItem(
+                    url: child,
+                    match: fullMatch ? .strong : .nameVariant,
+                    selectedByDefault: fullMatch,
+                    reason: fullMatch ? "bundle id 强匹配" : "关联标识 \(token ?? "")，请确认后选择"
                 ))
             }
         }

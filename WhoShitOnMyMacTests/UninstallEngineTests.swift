@@ -82,4 +82,35 @@ struct UninstallEngineTests {
         )
         #expect(!plan.residues.contains { $0.url.path.contains("/Library/") })
     }
+
+    @Test func relatedHelpersAreShownAsConfirmableResidues() throws {
+        let fm = FileManager.default
+        let root = fm.temporaryDirectory.appendingPathComponent("wsom-helper-\(UUID().uuidString)")
+        defer { try? fm.removeItem(at: root) }
+        let home = root.appendingPathComponent("home")
+        let systemLibrary = root.appendingPathComponent("Library")
+        let config = home.appendingPathComponent(".config/com.vortex.helper")
+        let daemon = systemLibrary.appendingPathComponent("LaunchDaemons/com.vortex.helper.plist")
+        try fm.createDirectory(at: config, withIntermediateDirectories: true)
+        try fm.createDirectory(at: daemon.deletingLastPathComponent(), withIntermediateDirectories: true)
+        try Data().write(to: daemon)
+
+        let plan = UninstallEngine.plan(
+            appURL: URL(fileURLWithPath: "/Applications/星连VPN.app"),
+            bundleId: "org.erb.vortex",
+            displayName: "星连VPN",
+            home: home,
+            otherInstalledIds: [],
+            systemLibrary: systemLibrary
+        )
+
+        #expect(plan.residues.contains {
+            PathNormalizer.resolve($0.url).path == PathNormalizer.resolve(config).path
+                && $0.match == .nameVariant && !$0.selectedByDefault
+        })
+        #expect(plan.residues.contains {
+            PathNormalizer.resolve($0.url).path == PathNormalizer.resolve(daemon).path
+                && $0.match == .nameVariant && !$0.selectedByDefault
+        })
+    }
 }
