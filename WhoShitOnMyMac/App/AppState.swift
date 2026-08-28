@@ -3,7 +3,7 @@ import Foundation
 import Observation
 
 enum SidebarItem: String, CaseIterable, Identifiable {
-    case snapshots = "快照"
+    case snapshots = "扫描"
     case junk = "垃圾"
     case apps = "应用"
     case settings = "设置"
@@ -44,8 +44,6 @@ final class AppState {
     var diffEntries: [DiffEntry] = []
     var selectedDiffs: Set<String> = []
     var isLoadingSnapshotEntries = false
-    var isShowingSnapshotComparison = false
-    var baseSnapshotID: UUID?
     var currentSnapshotID: UUID?
     var showDryRun = false
     var showOnboarding: Bool

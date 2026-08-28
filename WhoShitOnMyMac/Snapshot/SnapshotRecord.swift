@@ -38,9 +38,3 @@ final class SnapshotRecord {
         self.sqliteFileName = sqliteFileName ?? "\(id.uuidString).sqlite"
     }
 }
-
-enum SnapshotSelection {
-    static func canBeBase(_ record: SnapshotRecord) -> Bool {
-        !record.incomplete
-    }
-}

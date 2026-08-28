@@ -1,13 +1,11 @@
 import AppKit
 import SwiftData
 import SwiftUI
-import UniformTypeIdentifiers
 
 struct SnapshotPane: View {
     @Environment(AppState.self) private var state
     @Environment(\.modelContext) private var modelContext
     var snapshots: [SnapshotRecord]
-    @State private var note = ""
 
     var body: some View {
         @Bindable var state = state
@@ -15,7 +13,6 @@ struct SnapshotPane: View {
             HStack {
                 Button("新建扫描") { pickAndScan() }
                     .disabled(state.isScanning)
-                Button("导入快照") { importSnapshot() }
                 Spacer()
             }
             if state.isScanning {
@@ -52,52 +49,77 @@ struct SnapshotPane: View {
             if let message = state.lastMessage {
                 Text(message).foregroundStyle(.secondary)
             }
-            HStack(alignment: .top) {
-                List(snapshots) { record in
-                    VStack(alignment: .leading) {
-                        Text(record.createdAt.formatted(date: .abbreviated, time: .shortened))
-                        Text(record.rootPath).font(.caption).foregroundStyle(.secondary)
-                        Text("\(ByteFormat.string(record.totalBytes)) · \(record.fileCount) 文件")
+            HStack(alignment: .top, spacing: 12) {
+                VStack(alignment: .leading, spacing: 8) {
+                    HStack {
+                        Text("扫描历史")
+                            .font(.headline)
+                        Spacer()
+                        Text("\(snapshots.count) 次")
                             .font(.caption)
-                        if record.incomplete {
-                            Text("不完整，不能当基准").font(.caption).foregroundStyle(.orange)
-                        }
+                            .foregroundStyle(.secondary)
                     }
-                    .tag(record.id)
-                    .contextMenu {
-                        Button("设为基准") {
-                            if SnapshotSelection.canBeBase(record) { state.baseSnapshotID = record.id }
+                    List(snapshots, selection: $state.currentSnapshotID) { record in
+                        VStack(alignment: .leading) {
+                            Text(record.createdAt.formatted(date: .abbreviated, time: .shortened))
+                            Text(record.rootPath).font(.caption).foregroundStyle(.secondary)
+                            Text("\(ByteFormat.string(record.totalBytes)) · \(record.fileCount) 文件")
+                                .font(.caption)
+                            if record.incomplete {
+                                Text("扫描不完整，部分内容可能缺失")
+                                    .font(.caption)
+                                    .foregroundStyle(.orange)
+                            }
                         }
-                        .disabled(!SnapshotSelection.canBeBase(record))
-                        Button("设为当前") { state.currentSnapshotID = record.id }
+                        .tag(record.id)
                     }
                 }
-                .frame(minWidth: 240)
-                VStack(alignment: .leading) {
-                    Picker("基准", selection: $state.baseSnapshotID) {
-                        Text("未选").tag(Optional<UUID>.none)
-                        ForEach(snapshots.filter { SnapshotSelection.canBeBase($0) }) { record in
-                            Text(record.createdAt.formatted()).tag(Optional(record.id))
-                        }
-                    }
-                    Picker("当前", selection: $state.currentSnapshotID) {
-                        Text("未选").tag(Optional<UUID>.none)
-                        ForEach(snapshots) { record in
-                            Text(record.createdAt.formatted()).tag(Optional(record.id))
-                        }
-                    }
-                    Button("对比") { compare() }
-                        .disabled(state.baseSnapshotID == nil || state.currentSnapshotID == nil)
+                .frame(minWidth: 240, idealWidth: 280, maxWidth: 340, maxHeight: .infinity)
+
+                Divider()
+
+                VStack(alignment: .leading, spacing: 8) {
                     if state.isLoadingSnapshotEntries {
                         HStack {
                             ProgressView().controlSize(.small)
                             Text("正在汇总根目录内容…").foregroundStyle(.secondary)
                         }
                     }
+                    if !visibleEntries.isEmpty {
+                        HStack(spacing: 28) {
+                            Label {
+                                VStack(alignment: .leading, spacing: 2) {
+                                    Text("\(visibleEntries.count) 项")
+                                        .font(.title2.weight(.semibold))
+                                        .monospacedDigit()
+                                    Text("疑似垃圾")
+                                        .font(.caption)
+                                        .foregroundStyle(.secondary)
+                                }
+                            } icon: {
+                                Image(systemName: "trash.slash")
+                                    .font(.title2)
+                                    .foregroundStyle(.orange)
+                            }
+                            Divider()
+                                .frame(height: 38)
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text(ByteFormat.string(suspectedBytes))
+                                    .font(.title2.weight(.semibold))
+                                    .monospacedDigit()
+                                Text("预计可清理")
+                                    .font(.caption)
+                                    .foregroundStyle(.secondary)
+                            }
+                            Spacer()
+                        }
+                        .padding(12)
+                        .background(.quaternary, in: RoundedRectangle(cornerRadius: 10))
+                    }
                     if !visibleEntries.isEmpty, let rootPath = currentRootPath {
                         HStack {
-                            Text("\(state.isShowingSnapshotComparison ? "根目录变更" : "根目录内容") \(visibleEntries.count) 项 · \(ByteFormat.string(visibleEntries.reduce(0) { $0 + ($1.currentSize ?? 0) }))")
-                                .foregroundStyle(.secondary)
+                            Text("扫描结果")
+                                .font(.headline)
                             Spacer()
                             Button("全选") { state.selectAllDiffs(rootPath: rootPath) }
                                 .disabled(selectableEntries.isEmpty || state.selectedDiffs.count == selectableEntries.count)
@@ -122,10 +144,30 @@ struct SnapshotPane: View {
                                 .foregroundStyle(color(for: entry.kind))
                         }
                     }
+                    if state.currentSnapshotID == nil && !state.isLoadingSnapshotEntries {
+                        ContentUnavailableView {
+                            Label("选择一次扫描", systemImage: "clock.arrow.circlepath")
+                        } description: {
+                            Text("从左侧扫描历史中选择记录，或新建扫描")
+                        }
+                    }
+                    if state.currentSnapshotID != nil && visibleEntries.isEmpty && !state.isLoadingSnapshotEntries {
+                        ContentUnavailableView {
+                            Label("未发现疑似垃圾", systemImage: "checkmark.circle")
+                        } description: {
+                            Text("这次扫描没有可列出的清理候选项")
+                        }
+                    }
                 }
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
             }
         }
         .padding()
+        .onAppear {
+            if state.currentSnapshotID == nil {
+                state.currentSnapshotID = snapshots.first?.id
+            }
+        }
         .onChange(of: state.currentSnapshotID) { _, _ in
             loadCurrentContents()
         }
@@ -137,6 +179,10 @@ struct SnapshotPane: View {
 
     private var selectableEntries: [DiffEntry] {
         visibleEntries.filter { $0.currentSize != nil && $0.kind != .incomparable }
+    }
+
+    private var suspectedBytes: Int64 {
+        visibleEntries.reduce(0) { $0 + ($1.currentSize ?? 0) }
     }
 
     private var currentRootPath: String? {
@@ -159,9 +205,7 @@ struct SnapshotPane: View {
 
     private func label(for entry: DiffEntry) -> String {
         switch entry.kind {
-        case .added:
-            let size = ByteFormat.string(entry.currentSize ?? 0)
-            return state.isShowingSnapshotComparison ? "\(size) · 新增" : size
+        case .added: return ByteFormat.string(entry.currentSize ?? 0)
         case .removed: return "删除"
         case .grew: return "\(ByteFormat.string(entry.currentSize ?? 0)) · +\(ByteFormat.string(entry.delta))"
         case .shrunk: return "\(ByteFormat.string(entry.currentSize ?? 0)) · \(ByteFormat.string(entry.delta))"
@@ -172,7 +216,7 @@ struct SnapshotPane: View {
 
     private func color(for kind: DiffKind) -> Color {
         switch kind {
-        case .added: return state.isShowingSnapshotComparison ? .red : .primary
+        case .added: return .primary
         case .grew: return .red
         case .removed, .shrunk: return .green
         case .incomparable: return .secondary
@@ -235,7 +279,7 @@ struct SnapshotPane: View {
                     state.scanProgress = "完成"
                     state.scanFraction = 1
                     state.scanDetail = ""
-                    state.lastMessage = result.incomplete ? "扫描不完整，不能当基准" : "扫描完成"
+                    state.lastMessage = result.incomplete ? "扫描不完整，部分内容可能缺失" : "扫描完成"
                     loadContents(record: record)
                 }
             } catch {
@@ -243,43 +287,6 @@ struct SnapshotPane: View {
                     state.isScanning = false
                     state.scanFraction = nil
                     state.scanDetail = ""
-                    state.lastMessage = error.localizedDescription
-                }
-            }
-        }
-    }
-
-    private func importSnapshot() {
-        let panel = NSOpenPanel()
-        panel.allowedContentTypes = [UTType(filenameExtension: "sqlite") ?? .data]
-        panel.canChooseFiles = true
-        guard panel.runModal() == .OK, let url = panel.url else { return }
-        let dest = AppPaths.snapshotsDirectory.appendingPathComponent(url.lastPathComponent)
-        try? FileManager.default.createDirectory(at: AppPaths.snapshotsDirectory, withIntermediateDirectories: true)
-        try? FileManager.default.copyItem(at: url, to: dest)
-        let record = SnapshotRecord(rootPath: "(导入)", sqliteFileName: dest.lastPathComponent)
-        modelContext.insert(record)
-    }
-
-    private func compare() {
-        guard let baseID = state.baseSnapshotID, let currentID = state.currentSnapshotID,
-              let base = snapshots.first(where: { $0.id == baseID }),
-              let current = snapshots.first(where: { $0.id == currentID }) else { return }
-        state.clearDiffSelection()
-        state.isShowingSnapshotComparison = true
-        state.isLoadingSnapshotEntries = true
-        DispatchQueue.global(qos: .userInitiated).async {
-            do {
-                let baseStore = try SnapshotStore.create(at: AppPaths.snapshotsDirectory.appendingPathComponent(base.sqliteFileName))
-                let currentStore = try SnapshotStore.create(at: AppPaths.snapshotsDirectory.appendingPathComponent(current.sqliteFileName))
-                let entries = try DiffEngine.compare(base: baseStore, current: currentStore)
-                DispatchQueue.main.async {
-                    state.diffEntries = entries
-                    state.isLoadingSnapshotEntries = false
-                }
-            } catch {
-                DispatchQueue.main.async {
-                    state.isLoadingSnapshotEntries = false
                     state.lastMessage = error.localizedDescription
                 }
             }
@@ -294,7 +301,6 @@ struct SnapshotPane: View {
 
     private func loadContents(record: SnapshotRecord) {
         state.clearDiffSelection()
-        state.isShowingSnapshotComparison = false
         state.isLoadingSnapshotEntries = true
         DispatchQueue.global(qos: .userInitiated).async {
             do {

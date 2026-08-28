@@ -4,7 +4,7 @@ import {
   ArrowDownToLine,
   Code2,
   ExternalLink,
-  GitCompareArrows,
+  FolderSearch,
   History,
   ScanSearch,
   ShieldCheck,
@@ -16,10 +16,10 @@ const downloadUrl =
 
 const features = [
   {
-    icon: GitCompareArrows,
-    eyebrow: 'Snapshot diff',
+    icon: FolderSearch,
+    eyebrow: 'Directory scan',
     title: '看见空间从哪里消失',
-    copy: '保存磁盘快照，对比新增、增长与缩减的文件，把“硬盘怎么又满了”变成可回答的问题。',
+    copy: '按文件和文件夹的实际占用排序，汇总疑似垃圾数量与预计可清理容量，让空间去向一目了然。',
   },
   {
     icon: ScanSearch,
@@ -71,7 +71,7 @@ export default function Home() {
             <span className="block bg-gradient-to-r from-cyan-300 via-emerald-300 to-amber-300 bg-clip-text text-transparent">弄脏了。</span>
           </h1>
           <p className="mt-7 max-w-xl text-pretty text-lg leading-8 text-slate-300 sm:text-xl">
-            一款安全优先的原生 Mac 清理工具。快照对比、垃圾扫描、应用卸载，所有删除先预览，默认只进废纸篓。
+            一款安全优先的原生 Mac 清理工具。目录扫描、垃圾扫描、应用卸载，所有删除先预览，默认只进废纸篓。
           </p>
           <div className="mt-9 flex flex-col gap-3 sm:flex-row">
             <a
@@ -101,7 +101,7 @@ export default function Home() {
               className="mx-auto aspect-square w-full max-w-[340px] drop-shadow-[0_30px_45px_rgba(0,0,0,0.45)]"
             />
             <div className="mt-6 grid grid-cols-3 gap-2 text-center text-[11px] font-medium text-slate-300 sm:text-xs">
-              <span className="rounded-lg border border-white/8 bg-black/15 px-2 py-2.5">快照</span>
+              <span className="rounded-lg border border-white/8 bg-black/15 px-2 py-2.5">扫描</span>
               <span className="rounded-lg border border-white/8 bg-black/15 px-2 py-2.5">清理</span>
               <span className="rounded-lg border border-white/8 bg-black/15 px-2 py-2.5">卸载</span>
             </div>
