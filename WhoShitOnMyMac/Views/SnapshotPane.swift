@@ -88,15 +88,37 @@ struct SnapshotPane: View {
                     }
                     Button("对比") { compare() }
                         .disabled(state.baseSnapshotID == nil || state.currentSnapshotID == nil)
-                    List(state.diffEntries.filter { $0.kind != .unchanged }) { entry in
+                    if state.isLoadingSnapshotEntries {
                         HStack {
-                            if entry.kind == .grew || entry.kind == .added {
+                            ProgressView().controlSize(.small)
+                            Text("正在汇总根目录内容…").foregroundStyle(.secondary)
+                        }
+                    }
+                    if !visibleEntries.isEmpty, let rootPath = currentRootPath {
+                        HStack {
+                            Text("\(state.isShowingSnapshotComparison ? "根目录变更" : "根目录内容") \(visibleEntries.count) 项 · \(ByteFormat.string(visibleEntries.reduce(0) { $0 + ($1.currentSize ?? 0) }))")
+                                .foregroundStyle(.secondary)
+                            Spacer()
+                            Button("全选") { state.selectAllDiffs(rootPath: rootPath) }
+                                .disabled(selectableEntries.isEmpty || state.selectedDiffs.count == selectableEntries.count)
+                            Button("取消全选") { state.clearDiffSelection() }
+                                .disabled(state.selectedDiffs.isEmpty)
+                        }
+                    }
+                    List(visibleEntries) { entry in
+                        HStack {
+                            if entry.currentSize != nil && entry.kind != .incomparable, currentRootPath != nil {
                                 Toggle("", isOn: binding(for: entry))
                                     .labelsHidden()
+                                    .help(state.selectedDiffs.contains(entry.id) ? "取消选择" : "选择并加入待删除")
                             }
+                            Image(systemName: entry.isDirectory ? "folder.fill" : "doc.fill")
+                                .foregroundStyle(entry.isDirectory ? .blue : .secondary)
                             Text(entry.relativePath)
+                                .lineLimit(1)
                             Spacer()
                             Text(label(for: entry))
+                                .monospacedDigit()
                                 .foregroundStyle(color(for: entry.kind))
                         }
                     }
@@ -104,20 +126,32 @@ struct SnapshotPane: View {
             }
         }
         .padding()
+        .onChange(of: state.currentSnapshotID) { _, _ in
+            loadCurrentContents()
+        }
+    }
+
+    private var visibleEntries: [DiffEntry] {
+        state.diffEntries.filter { $0.kind != .unchanged }
+    }
+
+    private var selectableEntries: [DiffEntry] {
+        visibleEntries.filter { $0.currentSize != nil && $0.kind != .incomparable }
+    }
+
+    private var currentRootPath: String? {
+        guard let path = snapshots.first(where: { $0.id == state.currentSnapshotID })?.rootPath,
+              path.hasPrefix("/"),
+              FileManager.default.fileExists(atPath: path) else { return nil }
+        return path
     }
 
     private func binding(for entry: DiffEntry) -> Binding<Bool> {
         Binding(
             get: { state.selectedDiffs.contains(entry.relativePath) },
             set: { on in
-                if on {
-                    state.selectedDiffs.insert(entry.relativePath)
-                    if let current = snapshots.first(where: { $0.id == state.currentSnapshotID }) {
-                        let url = URL(fileURLWithPath: current.rootPath).appendingPathComponent(entry.relativePath)
-                        state.enqueue(url: url, bytes: entry.currentSize ?? 0, source: "对比")
-                    }
-                } else {
-                    state.selectedDiffs.remove(entry.relativePath)
+                if let rootPath = currentRootPath {
+                    state.setDiffSelected(entry, rootPath: rootPath, selected: on)
                 }
             }
         )
@@ -125,10 +159,12 @@ struct SnapshotPane: View {
 
     private func label(for entry: DiffEntry) -> String {
         switch entry.kind {
-        case .added: return "新增 \(ByteFormat.string(entry.delta))"
+        case .added:
+            let size = ByteFormat.string(entry.currentSize ?? 0)
+            return state.isShowingSnapshotComparison ? "\(size) · 新增" : size
         case .removed: return "删除"
-        case .grew: return "+\(ByteFormat.string(entry.delta))"
-        case .shrunk: return ByteFormat.string(entry.delta)
+        case .grew: return "\(ByteFormat.string(entry.currentSize ?? 0)) · +\(ByteFormat.string(entry.delta))"
+        case .shrunk: return "\(ByteFormat.string(entry.currentSize ?? 0)) · \(ByteFormat.string(entry.delta))"
         case .incomparable: return "不可比较"
         case .unchanged: return ""
         }
@@ -136,7 +172,8 @@ struct SnapshotPane: View {
 
     private func color(for kind: DiffKind) -> Color {
         switch kind {
-        case .added, .grew: return .red
+        case .added: return state.isShowingSnapshotComparison ? .red : .primary
+        case .grew: return .red
         case .removed, .shrunk: return .green
         case .incomparable: return .secondary
         case .unchanged: return .primary
@@ -193,11 +230,13 @@ struct SnapshotPane: View {
                     )
                     modelContext.insert(record)
                     try? modelContext.save()
+                    state.currentSnapshotID = record.id
                     state.isScanning = false
                     state.scanProgress = "完成"
                     state.scanFraction = 1
                     state.scanDetail = ""
                     state.lastMessage = result.incomplete ? "扫描不完整，不能当基准" : "扫描完成"
+                    loadContents(record: record)
                 }
             } catch {
                 DispatchQueue.main.async {
@@ -226,13 +265,51 @@ struct SnapshotPane: View {
         guard let baseID = state.baseSnapshotID, let currentID = state.currentSnapshotID,
               let base = snapshots.first(where: { $0.id == baseID }),
               let current = snapshots.first(where: { $0.id == currentID }) else { return }
-        do {
-            let baseStore = try SnapshotStore.create(at: AppPaths.snapshotsDirectory.appendingPathComponent(base.sqliteFileName))
-            let currentStore = try SnapshotStore.create(at: AppPaths.snapshotsDirectory.appendingPathComponent(current.sqliteFileName))
-            state.diffEntries = try DiffEngine.compare(base: baseStore, current: currentStore)
-                .sorted { abs($0.delta) > abs($1.delta) }
-        } catch {
-            state.lastMessage = error.localizedDescription
+        state.clearDiffSelection()
+        state.isShowingSnapshotComparison = true
+        state.isLoadingSnapshotEntries = true
+        DispatchQueue.global(qos: .userInitiated).async {
+            do {
+                let baseStore = try SnapshotStore.create(at: AppPaths.snapshotsDirectory.appendingPathComponent(base.sqliteFileName))
+                let currentStore = try SnapshotStore.create(at: AppPaths.snapshotsDirectory.appendingPathComponent(current.sqliteFileName))
+                let entries = try DiffEngine.compare(base: baseStore, current: currentStore)
+                DispatchQueue.main.async {
+                    state.diffEntries = entries
+                    state.isLoadingSnapshotEntries = false
+                }
+            } catch {
+                DispatchQueue.main.async {
+                    state.isLoadingSnapshotEntries = false
+                    state.lastMessage = error.localizedDescription
+                }
+            }
+        }
+    }
+
+    private func loadCurrentContents() {
+        guard let currentID = state.currentSnapshotID,
+              let current = snapshots.first(where: { $0.id == currentID }) else { return }
+        loadContents(record: current)
+    }
+
+    private func loadContents(record: SnapshotRecord) {
+        state.clearDiffSelection()
+        state.isShowingSnapshotComparison = false
+        state.isLoadingSnapshotEntries = true
+        DispatchQueue.global(qos: .userInitiated).async {
+            do {
+                let store = try SnapshotStore.create(at: AppPaths.snapshotsDirectory.appendingPathComponent(record.sqliteFileName))
+                let entries = try DiffEngine.contents(current: store)
+                DispatchQueue.main.async {
+                    state.diffEntries = entries
+                    state.isLoadingSnapshotEntries = false
+                }
+            } catch {
+                DispatchQueue.main.async {
+                    state.isLoadingSnapshotEntries = false
+                    state.lastMessage = error.localizedDescription
+                }
+            }
         }
     }
 }

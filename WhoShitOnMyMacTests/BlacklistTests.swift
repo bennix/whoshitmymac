@@ -24,6 +24,7 @@ struct BlacklistTests {
 
     @Test func ownBundleIdIsBlocked() {
         #expect(Blacklist.blocksBundleId("fudan.WhoShitOnMyMac"))
+        #expect(Blacklist.blocksBundleId("com.bennix.whoshitmymac"))
     }
 
     @Test func appSupportSubtreeIsBlocked() {

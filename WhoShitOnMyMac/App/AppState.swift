@@ -14,7 +14,7 @@ struct InstalledApp: Identifiable, Hashable, Sendable {
     var url: URL
     var name: String
     var bundleId: String
-    var bytes: Int64
+    var bytes: Int64?
     var isRunning: Bool
 
     var id: String { url.path }
@@ -34,6 +34,7 @@ final class AppState {
     var scanDetail = ""
     var isScanningJunk = false
     var isLoadingApps = false
+    var appLoadProgress = ""
     var junkItems: [JunkItem] = []
     var selectedJunk: Set<String> = []
     var installedApps: [InstalledApp] = []
@@ -42,6 +43,8 @@ final class AppState {
     var selectedResidues: Set<String> = []
     var diffEntries: [DiffEntry] = []
     var selectedDiffs: Set<String> = []
+    var isLoadingSnapshotEntries = false
+    var isShowingSnapshotComparison = false
     var baseSnapshotID: UUID?
     var currentSnapshotID: UUID?
     var showDryRun = false
@@ -109,6 +112,40 @@ final class AppState {
         queue.tasks.removeAll { $0.source == "垃圾" }
     }
 
+    func setDiffSelected(_ entry: DiffEntry, rootPath: String, selected: Bool) {
+        let url = URL(fileURLWithPath: rootPath, isDirectory: true)
+            .appendingPathComponent(entry.relativePath)
+        let resolvedPath = PathNormalizer.resolve(url).path
+        if selected {
+            let rejection = queue.enqueue(
+                TrashTask(url: url, bytes: entry.currentSize ?? 0, source: "快照"),
+                appSupport: AppPaths.applicationSupport,
+                whitelist: { self.whitelist.contains($0) }
+            )
+            if rejection == nil {
+                selectedDiffs.insert(entry.id)
+            } else {
+                lastMessage = rejection == .blacklisted ? "已拦截黑名单路径" : "白名单保护，未入队"
+            }
+        } else {
+            selectedDiffs.remove(entry.id)
+            queue.tasks.removeAll {
+                $0.source == "快照" && PathNormalizer.resolve($0.url).path == resolvedPath
+            }
+        }
+    }
+
+    func selectAllDiffs(rootPath: String) {
+        for entry in diffEntries where entry.currentSize != nil && entry.kind != .incomparable && entry.kind != .unchanged {
+            setDiffSelected(entry, rootPath: rootPath, selected: true)
+        }
+    }
+
+    func clearDiffSelection() {
+        selectedDiffs.removeAll()
+        queue.tasks.removeAll { $0.source == "快照" }
+    }
+
     func runTrash() {
         guard !isTrashing, !queue.tasks.isEmpty else { return }
         isTrashing = true
@@ -123,12 +160,18 @@ final class AppState {
                 "trash ok=\(outcome.ok) failed=\(outcome.failed.count) delta=\(delta)"
             )
             let succeededPaths = Set(outcome.succeeded.map { PathNormalizer.resolve($0).path })
+            let succeededSnapshotNames = Set<String>(pendingQueue.tasks.compactMap { task -> String? in
+                guard task.source == "快照", succeededPaths.contains(PathNormalizer.resolve(task.url).path) else { return nil }
+                return task.url.lastPathComponent
+            })
             DispatchQueue.main.async {
                 guard let self else { return }
                 self.lastExecuteFailed = outcome.failed
                 self.queue.tasks.removeAll { succeededPaths.contains(PathNormalizer.resolve($0.url).path) }
                 self.junkItems.removeAll { succeededPaths.contains(PathNormalizer.resolve($0.path).path) }
                 self.selectedJunk.subtract(succeededPaths)
+                self.diffEntries.removeAll { succeededSnapshotNames.contains($0.relativePath) }
+                self.selectedDiffs.subtract(succeededSnapshotNames)
                 self.installedApps.removeAll { succeededPaths.contains(PathNormalizer.resolve($0.url).path) }
                 if let selectedApp = self.selectedApp,
                    succeededPaths.contains(PathNormalizer.resolve(selectedApp.url).path) {
@@ -145,27 +188,53 @@ final class AppState {
     func loadInstalledApps() {
         guard !isLoadingApps else { return }
         isLoadingApps = true
+        appLoadProgress = "正在读取 Applications…"
         lastMessage = nil
+        let roots = Self.installedAppRoots
+        let runningBundleIDs = Set(NSWorkspace.shared.runningApplications.compactMap(\.bundleIdentifier))
         DispatchQueue.global(qos: .userInitiated).async { [weak self] in
-            let result = Self.discoverInstalledApps()
+            var result = Self.discoverInstalledApps(in: roots, runningBundleIDs: runningBundleIDs)
             DispatchQueue.main.async {
                 guard let self else { return }
                 self.installedApps = result
-                self.isLoadingApps = false
-                self.lastMessage = "已载入 \(result.count) 个应用"
+                self.appLoadProgress = result.isEmpty ? "没有找到可管理的应用" : "已找到 \(result.count) 个应用，正在统计体积…"
+                if result.isEmpty { self.isLoadingApps = false }
+            }
+            for index in result.indices {
+                result[index].bytes = Self.directorySize(result[index].url)
+                let updated = result[index]
+                DispatchQueue.main.async {
+                    guard let self else { return }
+                    if let stateIndex = self.installedApps.firstIndex(where: { $0.id == updated.id }) {
+                        self.installedApps[stateIndex].bytes = updated.bytes
+                    }
+                    self.appLoadProgress = "正在统计应用体积 \(index + 1)/\(result.count)"
+                    if index == result.indices.last {
+                        self.installedApps.sort { ($0.bytes ?? -1) > ($1.bytes ?? -1) }
+                        self.isLoadingApps = false
+                        self.appLoadProgress = ""
+                        self.lastMessage = "已载入 \(result.count) 个应用"
+                    }
+                }
             }
         }
     }
 
-    private static func discoverInstalledApps() -> [InstalledApp] {
-        var result: [InstalledApp] = []
-        let roots = [
+    private static var installedAppRoots: [URL] {
+        [
             URL(fileURLWithPath: "/Applications"),
             FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent("Applications")
         ]
-        let running = Set(NSWorkspace.shared.runningApplications.compactMap(\.bundleIdentifier))
+    }
+
+    static func discoverInstalledApps(in roots: [URL], runningBundleIDs: Set<String>) -> [InstalledApp] {
+        var result: [InstalledApp] = []
         for root in roots {
-            guard let children = try? FileManager.default.contentsOfDirectory(at: root, includingPropertiesForKeys: [.isDirectoryKey, .fileSizeKey]) else { continue }
+            guard let children = try? FileManager.default.contentsOfDirectory(
+                at: root,
+                includingPropertiesForKeys: [.isDirectoryKey],
+                options: [.skipsHiddenFiles]
+            ) else { continue }
             for appURL in children where appURL.pathExtension == "app" {
                 guard let bundle = Bundle(url: appURL), let bundleId = bundle.bundleIdentifier else { continue }
                 if Blacklist.blocksBundleId(bundleId) { continue }
@@ -173,11 +242,16 @@ final class AppState {
                 let name = bundle.object(forInfoDictionaryKey: "CFBundleDisplayName") as? String
                     ?? bundle.object(forInfoDictionaryKey: "CFBundleName") as? String
                     ?? appURL.deletingPathExtension().lastPathComponent
-                let bytes = directorySize(appURL)
-                result.append(InstalledApp(url: appURL, name: name, bundleId: bundleId, bytes: bytes, isRunning: running.contains(bundleId)))
+                result.append(InstalledApp(
+                    url: appURL,
+                    name: name,
+                    bundleId: bundleId,
+                    bytes: nil,
+                    isRunning: runningBundleIDs.contains(bundleId)
+                ))
             }
         }
-        return result.sorted { $0.bytes > $1.bytes }
+        return result.sorted { $0.name.localizedStandardCompare($1.name) == .orderedAscending }
     }
 
     func makeUninstallPlan(for app: InstalledApp) {
@@ -200,10 +274,12 @@ final class AppState {
         lastMessage = nil
         let knownApps = installedApps
         let whitelist = whitelist
+        let runningBundleIDs = Set(NSWorkspace.shared.runningApplications.compactMap(\.bundleIdentifier))
         DispatchQueue.global(qos: .userInitiated).async { [weak self] in
-            let apps = knownApps.isEmpty ? Self.discoverInstalledApps() : knownApps
+            let apps = knownApps.isEmpty
+                ? Self.discoverInstalledApps(in: Self.installedAppRoots, runningBundleIDs: runningBundleIDs)
+                : knownApps
             let installedBundleIDs = Set(apps.map(\.bundleId))
-            let runningBundleIDs = Set(NSWorkspace.shared.runningApplications.compactMap(\.bundleIdentifier))
             let browserIDs = Set(["com.apple.Safari", "com.google.Chrome", "org.mozilla.firefox"])
             let engine = JunkEngine(
                 rules: JunkRule.bundledDefaults,

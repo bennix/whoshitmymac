@@ -4,7 +4,7 @@ enum Blacklist {
     static func blocksBundleId(_ id: String) -> Bool {
         let lower = id.lowercased()
         if lower.hasPrefix("com.apple.") { return true }
-        if lower == "fudan.whoshitonmymac" { return true }
+        if lower == "fudan.whoshitonmymac" || lower == "com.bennix.whoshitmymac" { return true }
         return false
     }
 

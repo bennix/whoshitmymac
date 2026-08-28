@@ -12,7 +12,7 @@ struct AppsPane: View {
                     if state.isLoadingApps {
                         ProgressView()
                             .controlSize(.small)
-                        Text("正在后台统计应用体积…")
+                        Text(state.appLoadProgress)
                             .font(.callout)
                             .foregroundStyle(.secondary)
                     }
@@ -37,7 +37,13 @@ struct AppsPane: View {
                         if app.isRunning {
                             Text("需先退出").font(.caption).foregroundStyle(.orange)
                         }
-                        Text(ByteFormat.string(app.bytes))
+                        if let bytes = app.bytes {
+                            Text(ByteFormat.string(bytes))
+                        } else {
+                            ProgressView()
+                                .controlSize(.mini)
+                                .help("正在计算应用体积")
+                        }
                     }
                     .tag(app)
                 }

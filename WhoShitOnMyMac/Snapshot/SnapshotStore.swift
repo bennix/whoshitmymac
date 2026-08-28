@@ -107,8 +107,13 @@ final class SnapshotStore: @unchecked Sendable {
 
     func pathMap() throws -> [String: SnapshotNode] {
         var map: [String: SnapshotNode] = [:]
+        var pathByID: [Int64: String] = [:]
         for row in try allNodes() {
-            let path = try relativePath(id: row.id)
+            let parentPath = row.node.parentId.flatMap { pathByID[$0] } ?? ""
+            let path = parentPath.isEmpty
+                ? row.node.name
+                : parentPath + "/" + row.node.name
+            pathByID[row.id] = path
             map[path] = row.node
         }
         return map

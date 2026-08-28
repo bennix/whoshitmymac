@@ -95,7 +95,7 @@ struct SnapshotEngine: Sendable {
         guard let enumerator = FileManager.default.enumerator(
             at: rootResolved,
             includingPropertiesForKeys: keys,
-            options: [.skipsPackageDescendants]
+            options: []
         ) else {
             return SnapshotResult(fileCount: 0, totalBytes: 0, deniedCount: 0, incomplete: true)
         }
@@ -195,7 +195,7 @@ struct SnapshotEngine: Sendable {
         guard let enumerator = FileManager.default.enumerator(
             at: root,
             includingPropertiesForKeys: keys,
-            options: [.skipsPackageDescendants]
+            options: []
         ) else { return 0 }
 
         var count = 0
