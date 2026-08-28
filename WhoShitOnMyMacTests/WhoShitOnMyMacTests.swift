@@ -47,4 +47,36 @@ struct WhoShitOnMyMacTests {
         #expect(apps.first?.bytes == nil)
         #expect(apps.first?.isRunning == true)
     }
+
+    @Test func removedAndMissingApplicationsDisappearFromList() {
+        let present = InstalledApp(
+            url: URL(fileURLWithPath: "/Applications/Present.app"),
+            name: "Present",
+            bundleId: "com.example.present",
+            bytes: 10,
+            isRunning: false
+        )
+        let trashed = InstalledApp(
+            url: URL(fileURLWithPath: "/Applications/Trashed.app"),
+            name: "Trashed",
+            bundleId: "com.example.trashed",
+            bytes: 20,
+            isRunning: false
+        )
+        let externallyRemoved = InstalledApp(
+            url: URL(fileURLWithPath: "/Applications/Missing.app"),
+            name: "Missing",
+            bundleId: "com.example.missing",
+            bytes: 30,
+            isRunning: false
+        )
+
+        let remaining = AppState.remainingInstalledApps(
+            [present, trashed, externallyRemoved],
+            afterRemoving: [trashed.url],
+            fileExists: { $0 != externallyRemoved.url.path }
+        )
+
+        #expect(remaining == [present])
+    }
 }

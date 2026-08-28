@@ -106,7 +106,13 @@ struct AppsPane: View {
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .padding()
-        .onAppear { if state.installedApps.isEmpty { state.loadInstalledApps() } }
+        .onAppear {
+            state.pruneMissingInstalledApps()
+            if state.installedApps.isEmpty { state.loadInstalledApps() }
+        }
+        .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
+            state.pruneMissingInstalledApps()
+        }
     }
 
     private func residueBinding(_ item: ResidueItem) -> Binding<Bool> {

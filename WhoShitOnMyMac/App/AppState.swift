@@ -172,16 +172,40 @@ final class AppState {
                 self.selectedJunk.subtract(succeededPaths)
                 self.diffEntries.removeAll { succeededSnapshotNames.contains($0.relativePath) }
                 self.selectedDiffs.subtract(succeededSnapshotNames)
-                self.installedApps.removeAll { succeededPaths.contains(PathNormalizer.resolve($0.url).path) }
-                if let selectedApp = self.selectedApp,
-                   succeededPaths.contains(PathNormalizer.resolve(selectedApp.url).path) {
-                    self.selectedApp = nil
-                    self.uninstallPlan = nil
-                    self.selectedResidues.removeAll()
-                }
+                self.reconcileInstalledApps(afterRemoving: outcome.succeeded)
                 self.isTrashing = false
                 self.lastMessage = "完成 \(outcome.ok) 项，失败 \(outcome.failed.count)，可用空间变化 \(ByteFormat.string(delta))"
             }
+        }
+    }
+
+    func pruneMissingInstalledApps() {
+        reconcileInstalledApps(afterRemoving: [])
+    }
+
+    private func reconcileInstalledApps(afterRemoving removedURLs: [URL]) {
+        installedApps = Self.remainingInstalledApps(
+            installedApps,
+            afterRemoving: removedURLs,
+            fileExists: { FileManager.default.fileExists(atPath: $0) }
+        )
+        if let selectedApp,
+           !installedApps.contains(where: { $0.id == selectedApp.id }) {
+            self.selectedApp = nil
+            uninstallPlan = nil
+            selectedResidues.removeAll()
+        }
+    }
+
+    static func remainingInstalledApps(
+        _ apps: [InstalledApp],
+        afterRemoving removedURLs: [URL],
+        fileExists: (String) -> Bool
+    ) -> [InstalledApp] {
+        let removedPaths = Set(removedURLs.map { PathNormalizer.resolve($0).path })
+        return apps.filter { app in
+            let path = PathNormalizer.resolve(app.url).path
+            return !removedPaths.contains(path) && fileExists(app.url.path)
         }
     }
 
