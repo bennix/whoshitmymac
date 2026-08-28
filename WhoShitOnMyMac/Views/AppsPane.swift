@@ -8,6 +8,14 @@ struct AppsPane: View {
             VStack(alignment: .leading) {
                 HStack {
                     Button("刷新应用列表") { state.loadInstalledApps() }
+                        .disabled(state.isLoadingApps)
+                    if state.isLoadingApps {
+                        ProgressView()
+                            .controlSize(.small)
+                        Text("正在后台统计应用体积…")
+                            .font(.callout)
+                            .foregroundStyle(.secondary)
+                    }
                     if !state.permissionStatus.hasAppManagement {
                         Button("打开应用管理权限") { state.permission.openAppManagementSettings() }
                     }

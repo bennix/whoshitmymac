@@ -10,7 +10,7 @@ enum SidebarItem: String, CaseIterable, Identifiable {
     var id: String { rawValue }
 }
 
-struct InstalledApp: Identifiable, Hashable {
+struct InstalledApp: Identifiable, Hashable, Sendable {
     var url: URL
     var name: String
     var bundleId: String
@@ -30,6 +30,10 @@ final class AppState {
     var lastMessage: String?
     var isScanning = false
     var scanProgress = "准备扫描"
+    var scanFraction: Double?
+    var scanDetail = ""
+    var isScanningJunk = false
+    var isLoadingApps = false
     var junkItems: [JunkItem] = []
     var selectedJunk: Set<String> = []
     var installedApps: [InstalledApp] = []
@@ -43,6 +47,7 @@ final class AppState {
     var showDryRun = false
     var showOnboarding: Bool
     var lastExecuteFailed: [(URL, String)] = []
+    var isTrashing = false
     var allowPermanentDelete = false
     var whitelistDraft = ""
 
@@ -72,23 +77,87 @@ final class AppState {
         }
     }
 
+    func setJunkSelected(_ item: JunkItem, selected: Bool) {
+        if selected {
+            let rejection = queue.enqueue(
+                TrashTask(url: item.path, bytes: item.bytes, source: "垃圾"),
+                appSupport: AppPaths.applicationSupport,
+                whitelist: { self.whitelist.contains($0) }
+            )
+            if rejection == nil {
+                selectedJunk.insert(item.id)
+            } else {
+                lastMessage = rejection == .blacklisted ? "已拦截黑名单路径" : "白名单保护，未入队"
+            }
+        } else {
+            selectedJunk.remove(item.id)
+            let path = PathNormalizer.resolve(item.path).path
+            queue.tasks.removeAll {
+                $0.source == "垃圾" && PathNormalizer.resolve($0.url).path == path
+            }
+        }
+    }
+
+    func selectAllJunk() {
+        for item in junkItems where item.skipReason == .none {
+            setJunkSelected(item, selected: true)
+        }
+    }
+
+    func clearJunkSelection() {
+        selectedJunk.removeAll()
+        queue.tasks.removeAll { $0.source == "垃圾" }
+    }
+
     func runTrash() {
+        guard !isTrashing, !queue.tasks.isEmpty else { return }
+        isTrashing = true
+        lastExecuteFailed = []
+        let pendingQueue = queue
         let before = volumeFree()
-        let runner = TrashRunner()
-        let outcome = runner.execute(queue)
-        lastExecuteFailed = outcome.failed
-        let after = volumeFree()
-        let delta = after - before
-        try? OperationLog(fileURL: AppPaths.operationsLog).append(
-            "trash ok=\(outcome.ok) failed=\(outcome.failed.count) delta=\(delta)"
-        )
-        lastMessage = "完成 \(outcome.ok) 项，失败 \(outcome.failed.count)，可用空间变化 \(ByteFormat.string(delta))"
-        if outcome.failed.isEmpty {
-            queue.tasks.removeAll()
+        DispatchQueue.global(qos: .userInitiated).async { [weak self] in
+            let outcome = TrashRunner().execute(pendingQueue)
+            let after = self?.volumeFree() ?? before
+            let delta = after - before
+            try? OperationLog(fileURL: AppPaths.operationsLog).append(
+                "trash ok=\(outcome.ok) failed=\(outcome.failed.count) delta=\(delta)"
+            )
+            let succeededPaths = Set(outcome.succeeded.map { PathNormalizer.resolve($0).path })
+            DispatchQueue.main.async {
+                guard let self else { return }
+                self.lastExecuteFailed = outcome.failed
+                self.queue.tasks.removeAll { succeededPaths.contains(PathNormalizer.resolve($0.url).path) }
+                self.junkItems.removeAll { succeededPaths.contains(PathNormalizer.resolve($0.path).path) }
+                self.selectedJunk.subtract(succeededPaths)
+                self.installedApps.removeAll { succeededPaths.contains(PathNormalizer.resolve($0.url).path) }
+                if let selectedApp = self.selectedApp,
+                   succeededPaths.contains(PathNormalizer.resolve(selectedApp.url).path) {
+                    self.selectedApp = nil
+                    self.uninstallPlan = nil
+                    self.selectedResidues.removeAll()
+                }
+                self.isTrashing = false
+                self.lastMessage = "完成 \(outcome.ok) 项，失败 \(outcome.failed.count)，可用空间变化 \(ByteFormat.string(delta))"
+            }
         }
     }
 
     func loadInstalledApps() {
+        guard !isLoadingApps else { return }
+        isLoadingApps = true
+        lastMessage = nil
+        DispatchQueue.global(qos: .userInitiated).async { [weak self] in
+            let result = Self.discoverInstalledApps()
+            DispatchQueue.main.async {
+                guard let self else { return }
+                self.installedApps = result
+                self.isLoadingApps = false
+                self.lastMessage = "已载入 \(result.count) 个应用"
+            }
+        }
+    }
+
+    private static func discoverInstalledApps() -> [InstalledApp] {
         var result: [InstalledApp] = []
         let roots = [
             URL(fileURLWithPath: "/Applications"),
@@ -108,7 +177,7 @@ final class AppState {
                 result.append(InstalledApp(url: appURL, name: name, bundleId: bundleId, bytes: bytes, isRunning: running.contains(bundleId)))
             }
         }
-        installedApps = result.sorted { $0.bytes > $1.bytes }
+        return result.sorted { $0.bytes > $1.bytes }
     }
 
     func makeUninstallPlan(for app: InstalledApp) {
@@ -126,27 +195,38 @@ final class AppState {
     }
 
     func scanJunk() {
-        let engine = JunkEngine(
-            rules: JunkRule.bundledDefaults,
-            home: FileManager.default.homeDirectoryForCurrentUser,
-            now: Date(),
-            isBusy: { group in
-                if group == .browsers {
-                    let ids = ["com.apple.Safari", "com.google.Chrome", "org.mozilla.firefox"]
-                    return NSWorkspace.shared.runningApplications.contains { ids.contains($0.bundleIdentifier ?? "") }
-                }
-                return false
-            },
-            isInstalledBundle: { id in
-                self.installedApps.contains { $0.bundleId == id }
+        guard !isScanningJunk else { return }
+        isScanningJunk = true
+        lastMessage = nil
+        let knownApps = installedApps
+        let whitelist = whitelist
+        DispatchQueue.global(qos: .userInitiated).async { [weak self] in
+            let apps = knownApps.isEmpty ? Self.discoverInstalledApps() : knownApps
+            let installedBundleIDs = Set(apps.map(\.bundleId))
+            let runningBundleIDs = Set(NSWorkspace.shared.runningApplications.compactMap(\.bundleIdentifier))
+            let browserIDs = Set(["com.apple.Safari", "com.google.Chrome", "org.mozilla.firefox"])
+            let engine = JunkEngine(
+                rules: JunkRule.bundledDefaults,
+                home: FileManager.default.homeDirectoryForCurrentUser,
+                now: Date(),
+                isBusy: { group in
+                    group == .browsers && !runningBundleIDs.isDisjoint(with: browserIDs)
+                },
+                isInstalledBundle: { installedBundleIDs.contains($0) }
+            )
+            let items = engine.scan(
+                blacklist: { Blacklist.blocks($0, appSupport: AppPaths.applicationSupport) },
+                whitelist: { whitelist.contains($0) }
+            )
+            DispatchQueue.main.async {
+                guard let self else { return }
+                if self.installedApps.isEmpty { self.installedApps = apps }
+                self.junkItems = items
+                self.selectedJunk = []
+                self.isScanningJunk = false
+                self.lastMessage = "垃圾扫描完成，共发现 \(items.count) 项"
             }
-        )
-        if installedApps.isEmpty { loadInstalledApps() }
-        junkItems = engine.scan(
-            blacklist: { Blacklist.blocks($0, appSupport: AppPaths.applicationSupport) },
-            whitelist: { self.whitelist.contains($0) }
-        )
-        selectedJunk = []
+        }
     }
 
     func volumeFree() -> Int64 {
@@ -157,7 +237,7 @@ final class AppState {
         return 0
     }
 
-    func directorySize(_ url: URL) -> Int64 {
+    private static func directorySize(_ url: URL) -> Int64 {
         var total: Int64 = 0
         if let enumerator = FileManager.default.enumerator(at: url, includingPropertiesForKeys: [.fileSizeKey, .isRegularFileKey]) {
             while let file = enumerator.nextObject() as? URL {

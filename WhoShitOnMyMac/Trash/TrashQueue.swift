@@ -60,17 +60,19 @@ struct TrashRunner: Sendable {
         self.trash = trash
     }
 
-    func execute(_ queue: TrashQueue) -> (ok: Int, failed: [(URL, String)]) {
+    func execute(_ queue: TrashQueue) -> (ok: Int, succeeded: [URL], failed: [(URL, String)]) {
         var ok = 0
+        var succeeded: [URL] = []
         var failed: [(URL, String)] = []
         for task in queue.tasks {
             do {
                 try trash(task.url)
                 ok += 1
+                succeeded.append(task.url)
             } catch {
                 failed.append((task.url, error.localizedDescription))
             }
         }
-        return (ok, failed)
+        return (ok, succeeded, failed)
     }
 }

@@ -39,6 +39,7 @@ struct TrashQueueTests {
         }
         let outcome = runner.execute(queue)
         #expect(outcome.ok == 1)
+        #expect(outcome.succeeded == [b])
         #expect(outcome.failed.count == 1)
         #expect(trashed == [b])
     }

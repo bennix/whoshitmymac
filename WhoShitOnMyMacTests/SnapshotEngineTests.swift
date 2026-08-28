@@ -23,7 +23,13 @@ struct SnapshotEngineTests {
         let db = fm.temporaryDirectory.appendingPathComponent("wsom-scan-\(UUID().uuidString).sqlite")
         defer { try? fm.removeItem(at: db) }
         let store = try SnapshotStore.create(at: db)
-        let result = try SnapshotEngine().scan(root: root, into: store, shouldCancel: { false })
+        var updates: [SnapshotScanProgress] = []
+        let result = try SnapshotEngine().scan(
+            root: root,
+            into: store,
+            progress: { updates.append($0) },
+            shouldCancel: { false }
+        )
         #expect(result.incomplete == false)
         #expect(result.fileCount >= 2)
         let paths = try store.allNodes().map { try store.relativePath(id: $0.id) }
@@ -31,6 +37,10 @@ struct SnapshotEngineTests {
         #expect(!paths.contains(where: { $0.contains("secret.txt") }))
         let flags = try store.allNodes().map(\.node.flags)
         #expect(flags.contains(where: { $0.contains(.symlink) }))
+        #expect(updates.contains(where: { $0.phase == .counting }))
+        #expect(updates.contains(where: { $0.phase == .scanning }))
+        #expect(updates.last?.phase == .finishing)
+        #expect(updates.last?.fraction == 1)
     }
 
     @Test func cancelMarksIncomplete() throws {

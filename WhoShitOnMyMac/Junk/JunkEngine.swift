@@ -67,11 +67,27 @@ struct JunkEngine: Sendable {
     }
 
     private func scanDirectories(_ rule: JunkRule, blacklist: (URL) -> Bool, whitelist: (URL) -> Bool) -> [JunkItem] {
-        rule.relativeHomePaths.compactMap { relative -> JunkItem? in
-            let url = home.appendingPathComponent(relative)
-            guard FileManager.default.fileExists(atPath: url.path) else { return nil }
-            return makeItem(url, group: rule.group, blacklist: blacklist, whitelist: whitelist, skip: .none)
+        var items: [JunkItem] = []
+        for relative in rule.relativeHomePaths {
+            let container = home.appendingPathComponent(relative)
+            guard let children = try? FileManager.default.contentsOfDirectory(
+                at: container,
+                includingPropertiesForKeys: [.fileSizeKey, .isDirectoryKey],
+                options: []
+            ) else { continue }
+            for child in children {
+                if let item = makeItem(
+                    child,
+                    group: rule.group,
+                    blacklist: blacklist,
+                    whitelist: whitelist,
+                    skip: .none
+                ) {
+                    items.append(item)
+                }
+            }
         }
+        return items
     }
 
     private func scanInstallers(_ rule: JunkRule, blacklist: (URL) -> Bool, whitelist: (URL) -> Bool) -> [JunkItem] {

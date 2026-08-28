@@ -16,11 +16,38 @@ struct SnapshotPane: View {
                 Button("新建扫描") { pickAndScan() }
                     .disabled(state.isScanning)
                 Button("导入快照") { importSnapshot() }
-                if state.isScanning {
-                    ProgressView().controlSize(.small)
-                    Text(state.scanProgress)
-                }
                 Spacer()
+            }
+            if state.isScanning {
+                VStack(alignment: .leading, spacing: 6) {
+                    HStack {
+                        Text(state.scanProgress)
+                            .font(.callout.weight(.medium))
+                        Spacer()
+                        if let fraction = state.scanFraction {
+                            Text(fraction, format: .percent.precision(.fractionLength(0)))
+                                .font(.caption.monospacedDigit())
+                                .foregroundStyle(.secondary)
+                        }
+                    }
+                    if let fraction = state.scanFraction {
+                        ProgressView(value: fraction)
+                            .progressViewStyle(.linear)
+                    } else {
+                        ProgressView()
+                            .progressViewStyle(.linear)
+                    }
+                    if !state.scanDetail.isEmpty {
+                        Text(state.scanDetail)
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                            .lineLimit(1)
+                            .truncationMode(.middle)
+                    }
+                }
+                .padding(.vertical, 4)
+                .accessibilityElement(children: .combine)
+                .accessibilityLabel(state.scanProgress)
             }
             if let message = state.lastMessage {
                 Text(message).foregroundStyle(.secondary)
@@ -128,14 +155,32 @@ struct SnapshotPane: View {
 
     private func scan(root: URL) {
         state.isScanning = true
-        state.scanProgress = "正在扫描…"
+        state.scanProgress = "正在准备扫描…"
+        state.scanFraction = nil
+        state.scanDetail = root.path
         let sqliteName = "\(UUID().uuidString).sqlite"
         let sqliteURL = AppPaths.snapshotsDirectory.appendingPathComponent(sqliteName)
         let started = Date()
         DispatchQueue.global(qos: .userInitiated).async {
             do {
                 let store = try SnapshotStore.create(at: sqliteURL)
-                let result = try SnapshotEngine().scan(root: root, into: store) { false }
+                let result = try SnapshotEngine().scan(
+                    root: root,
+                    into: store,
+                    progress: { progress in
+                        DispatchQueue.main.async {
+                            state.scanFraction = progress.fraction
+                            state.scanProgress = switch progress.phase {
+                            case .preparing: "正在准备扫描…"
+                            case .counting: "正在计算文件数量…"
+                            case .scanning: "已扫描 \(progress.fileCount) 个文件 · \(ByteFormat.string(progress.totalBytes))"
+                            case .finishing: "正在保存快照…"
+                            }
+                            state.scanDetail = (progress.currentPath as NSString).abbreviatingWithTildeInPath
+                        }
+                    },
+                    shouldCancel: { false }
+                )
                 DispatchQueue.main.async {
                     let record = SnapshotRecord(
                         rootPath: root.path,
@@ -150,11 +195,15 @@ struct SnapshotPane: View {
                     try? modelContext.save()
                     state.isScanning = false
                     state.scanProgress = "完成"
+                    state.scanFraction = 1
+                    state.scanDetail = ""
                     state.lastMessage = result.incomplete ? "扫描不完整，不能当基准" : "扫描完成"
                 }
             } catch {
                 DispatchQueue.main.async {
                     state.isScanning = false
+                    state.scanFraction = nil
+                    state.scanDetail = ""
                     state.lastMessage = error.localizedDescription
                 }
             }

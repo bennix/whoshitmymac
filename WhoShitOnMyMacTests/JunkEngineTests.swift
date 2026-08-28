@@ -30,7 +30,8 @@ struct JunkEngineTests {
             isInstalledBundle: { _ in false }
         )
         let items = engine.scan(blacklist: { _ in false }, whitelist: { _ in false })
-        #expect(items.contains { $0.group == .caches && $0.selectedByDefault == false })
+        #expect(items.contains { $0.group == .caches && $0.path.lastPathComponent == "foo" && $0.selectedByDefault == false })
+        #expect(!items.contains { $0.path == home.appendingPathComponent("Library/Caches") })
         #expect(items.contains { $0.group == .installers && $0.path.lastPathComponent == "a.dmg" })
         #expect(items.contains { $0.group == .artifacts && $0.skipReason == .recentActivity })
         #expect(items.contains { $0.group == .orphans && $0.path.lastPathComponent == "com.example.Gone" })

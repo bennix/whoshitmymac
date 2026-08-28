@@ -7,7 +7,19 @@ struct JunkPane: View {
         VStack(alignment: .leading) {
             HStack {
                 Button("扫描垃圾") { state.scanJunk() }
-                Button("全不选") { state.selectedJunk = [] }
+                    .disabled(state.isScanningJunk)
+                Button("全选") { state.selectAllJunk() }
+                    .disabled(state.isScanningJunk || state.junkItems.isEmpty)
+                    .help("选择没有保护或最近活动标记的项目")
+                Button("全不选") { state.clearJunkSelection() }
+                    .disabled(state.isScanningJunk || state.junkItems.isEmpty)
+                if state.isScanningJunk {
+                    ProgressView()
+                        .controlSize(.small)
+                    Text("正在后台扫描…")
+                        .font(.callout)
+                        .foregroundStyle(.secondary)
+                }
                 Spacer()
             }
             List {
@@ -69,12 +81,7 @@ struct JunkPane: View {
         Binding(
             get: { state.selectedJunk.contains(item.id) },
             set: { on in
-                if on {
-                    state.selectedJunk.insert(item.id)
-                    state.enqueue(url: item.path, bytes: item.bytes, source: "垃圾")
-                } else {
-                    state.selectedJunk.remove(item.id)
-                }
+                state.setJunkSelected(item, selected: on)
             }
         )
     }

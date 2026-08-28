@@ -43,7 +43,10 @@ xcodebuild build \
 
 ## Landing Page
 
-Landing Page 位于 [`site`](site)，使用 Sites/Vinext 构建。
+公开 Landing Page：[bennix.github.io/whoshitmymac](https://bennix.github.io/whoshitmymac/)
+
+- [`docs`](docs) 是 GitHub Pages 静态版本。
+- [`site`](site) 是 Sites/Vinext 版本。
 
 ```bash
 cd site

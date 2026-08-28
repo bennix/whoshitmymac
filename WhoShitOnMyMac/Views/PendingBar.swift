@@ -8,7 +8,18 @@ struct PendingBar: View {
             Text("待删除 \(state.queue.tasks.count) 项 · \(ByteFormat.string(state.queue.totalBytes))")
             Spacer()
             Button("查看计划") { state.showDryRun = true }
-            Button("移到废纸篓") { state.runTrash() }
+                .disabled(state.isTrashing)
+            Button {
+                state.runTrash()
+            } label: {
+                if state.isTrashing {
+                    ProgressView()
+                        .controlSize(.small)
+                } else {
+                    Text("移到废纸篓")
+                }
+            }
+            .disabled(state.isTrashing || state.queue.tasks.isEmpty)
         }
         .padding(10)
         .background(.bar)
@@ -41,11 +52,16 @@ struct DryRunSheet: View {
                 Button("关闭") { dismiss() }
                 Button("移到废纸篓") {
                     state.runTrash()
-                    if state.lastExecuteFailed.isEmpty { dismiss() }
                 }
+                .disabled(state.isTrashing || state.queue.tasks.isEmpty)
             }
         }
         .padding()
         .frame(width: 640, height: 420)
+        .onChange(of: state.isTrashing) { wasTrashing, isTrashing in
+            if wasTrashing && !isTrashing && state.lastExecuteFailed.isEmpty {
+                dismiss()
+            }
+        }
     }
 }
