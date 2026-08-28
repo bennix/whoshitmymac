@@ -1,0 +1,80 @@
+import SwiftUI
+
+struct AppsPane: View {
+    @Environment(AppState.self) private var state
+
+    var body: some View {
+        HSplitView {
+            VStack(alignment: .leading) {
+                HStack {
+                    Button("刷新应用列表") { state.loadInstalledApps() }
+                    if !state.permissionStatus.hasAppManagement {
+                        Button("打开应用管理权限") { state.permission.openAppManagementSettings() }
+                    }
+                }
+                List(state.installedApps, selection: Binding(
+                    get: { state.selectedApp },
+                    set: { app in
+                        if let app {
+                            state.makeUninstallPlan(for: app)
+                        }
+                    }
+                )) { app in
+                    HStack {
+                        VStack(alignment: .leading) {
+                            Text(app.name)
+                            Text(app.bundleId).font(.caption).foregroundStyle(.secondary)
+                        }
+                        Spacer()
+                        if app.isRunning {
+                            Text("需先退出").font(.caption).foregroundStyle(.orange)
+                        }
+                        Text(ByteFormat.string(app.bytes))
+                    }
+                    .tag(app)
+                }
+            }
+            VStack(alignment: .leading) {
+                if let plan = state.uninstallPlan {
+                    if plan.blocked {
+                        Text(plan.blockReason ?? "不可卸载").foregroundStyle(.red)
+                    } else {
+                        Text(plan.appURL.path).font(.caption)
+                        List(plan.residues) { item in
+                            HStack {
+                                Toggle("", isOn: residueBinding(item))
+                                    .labelsHidden()
+                                    .disabled(item.match == .shared)
+                                VStack(alignment: .leading) {
+                                    Text(item.url.path)
+                                    Text(item.reason).font(.caption).foregroundStyle(.secondary)
+                                }
+                            }
+                        }
+                        Button("加入待删除") {
+                            state.enqueue(url: plan.appURL, bytes: 0, source: "卸载")
+                            for item in plan.residues where state.selectedResidues.contains(item.id) {
+                                state.enqueue(url: item.url, bytes: 0, source: "卸载残留")
+                            }
+                        }
+                        .disabled(state.selectedApp?.isRunning == true)
+                    }
+                } else {
+                    Text("选择一个应用以预览残留").foregroundStyle(.secondary)
+                }
+            }
+        }
+        .padding()
+        .onAppear { if state.installedApps.isEmpty { state.loadInstalledApps() } }
+    }
+
+    private func residueBinding(_ item: ResidueItem) -> Binding<Bool> {
+        Binding(
+            get: { state.selectedResidues.contains(item.id) },
+            set: { on in
+                if on { state.selectedResidues.insert(item.id) }
+                else { state.selectedResidues.remove(item.id) }
+            }
+        )
+    }
+}

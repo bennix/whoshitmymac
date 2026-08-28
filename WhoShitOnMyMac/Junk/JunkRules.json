@@ -1,0 +1,6 @@
+[
+  {"group":"caches","relativeHomePaths":["Library/Caches"]},
+  {"group":"logs","relativeHomePaths":["Library/Logs"]},
+  {"group":"installers","relativeHomePaths":["Downloads","Desktop"],"installerExtensions":["dmg","pkg","mpkg","iso","xip"]},
+  {"group":"artifacts","relativeHomePaths":["Projects","Developer","GitHub","dev"],"artifactNames":["node_modules","target",".build","dist"]}
+]
