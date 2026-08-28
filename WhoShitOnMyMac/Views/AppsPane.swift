@@ -1,3 +1,4 @@
+import AppKit
 import SwiftUI
 
 struct AppsPane: View {
@@ -5,7 +6,7 @@ struct AppsPane: View {
 
     var body: some View {
         HSplitView {
-            VStack(alignment: .leading) {
+            VStack(alignment: .leading, spacing: 10) {
                 HStack {
                     Button("刷新应用列表") { state.loadInstalledApps() }
                         .disabled(state.isLoadingApps)
@@ -19,36 +20,60 @@ struct AppsPane: View {
                     if !state.permissionStatus.hasAppManagement {
                         Button("打开应用管理权限") { state.permission.openAppManagementSettings() }
                     }
+                    Spacer()
+                    if !state.isLoadingApps {
+                        Text("\(state.installedApps.count) 个应用")
+                            .font(.callout)
+                            .foregroundStyle(.secondary)
+                    }
                 }
-                List(state.installedApps, selection: Binding(
-                    get: { state.selectedApp },
-                    set: { app in
-                        if let app {
-                            state.makeUninstallPlan(for: app)
+                Group {
+                    if state.installedApps.isEmpty && !state.isLoadingApps {
+                        ContentUnavailableView {
+                            Label("未找到应用", systemImage: "app.dashed")
+                        } description: {
+                            Text("应用列表读取自 /Applications 和 ~/Applications")
+                        }
+                    } else {
+                        List(state.installedApps, selection: Binding(
+                            get: { state.selectedApp },
+                            set: { app in
+                                if let app {
+                                    state.makeUninstallPlan(for: app)
+                                }
+                            }
+                        )) { app in
+                            HStack {
+                                Image(nsImage: NSWorkspace.shared.icon(forFile: app.url.path))
+                                    .resizable()
+                                    .scaledToFit()
+                                    .frame(width: 32, height: 32)
+                                VStack(alignment: .leading) {
+                                    Text(app.name)
+                                    Text(app.bundleId).font(.caption).foregroundStyle(.secondary)
+                                }
+                                Spacer()
+                                if app.isRunning {
+                                    Text("需先退出").font(.caption).foregroundStyle(.orange)
+                                }
+                                if let bytes = app.bytes {
+                                    Text(ByteFormat.string(bytes))
+                                        .monospacedDigit()
+                                } else {
+                                    ProgressView()
+                                        .controlSize(.mini)
+                                        .help("正在计算应用体积")
+                                }
+                            }
+                            .tag(app)
                         }
                     }
-                )) { app in
-                    HStack {
-                        VStack(alignment: .leading) {
-                            Text(app.name)
-                            Text(app.bundleId).font(.caption).foregroundStyle(.secondary)
-                        }
-                        Spacer()
-                        if app.isRunning {
-                            Text("需先退出").font(.caption).foregroundStyle(.orange)
-                        }
-                        if let bytes = app.bytes {
-                            Text(ByteFormat.string(bytes))
-                        } else {
-                            ProgressView()
-                                .controlSize(.mini)
-                                .help("正在计算应用体积")
-                        }
-                    }
-                    .tag(app)
                 }
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
             }
-            VStack(alignment: .leading) {
+            .frame(minWidth: 420, maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+
+            VStack(alignment: .leading, spacing: 10) {
                 if let plan = state.uninstallPlan {
                     if plan.blocked {
                         Text(plan.blockReason ?? "不可卸载").foregroundStyle(.red)
@@ -77,7 +102,9 @@ struct AppsPane: View {
                     Text("选择一个应用以预览残留").foregroundStyle(.secondary)
                 }
             }
+            .frame(minWidth: 360, maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
         .padding()
         .onAppear { if state.installedApps.isEmpty { state.loadInstalledApps() } }
     }
