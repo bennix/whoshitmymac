@@ -44,6 +44,8 @@ struct SnapshotEngine: Sendable {
         var idByPath: [String: Int64] = [:]
 
         let rootResolved = PathNormalizer.resolve(root)
+        try store.beginBatch()
+        defer { try? store.endBatch() }
         progress(SnapshotScanProgress(
             phase: .preparing,
             processedItems: 0,
@@ -74,9 +76,9 @@ struct SnapshotEngine: Sendable {
             .isDirectoryKey, .isSymbolicLinkKey, .fileSizeKey, .fileAllocatedSizeKey,
             .contentModificationDateKey, .fileResourceIdentifierKey, .isReadableKey
         ]
+        let keySet = Set(keys)
         let totalItems = countItems(
             root: rootResolved,
-            keys: keys,
             progress: progress,
             shouldCancel: shouldCancel
         )
@@ -105,7 +107,7 @@ struct SnapshotEngine: Sendable {
             if shouldCancel() {
                 return SnapshotResult(fileCount: fileCount, totalBytes: totalBytes, deniedCount: deniedCount, incomplete: true)
             }
-            let values = try? item.resourceValues(forKeys: Set(keys))
+            let values = try? item.resourceValues(forKeys: keySet)
             let name = item.lastPathComponent
             if skipNames.contains(name) {
                 enumerator.skipDescendants()
@@ -155,7 +157,7 @@ struct SnapshotEngine: Sendable {
                 enumerator.skipDescendants()
             }
 
-            if processedItems.isMultiple(of: 128) {
+            if processedItems.isMultiple(of: 1_024) {
                 progress(SnapshotScanProgress(
                     phase: .scanning,
                     processedItems: processedItems,
@@ -180,7 +182,6 @@ struct SnapshotEngine: Sendable {
 
     private func countItems(
         root: URL,
-        keys: [URLResourceKey],
         progress: (SnapshotScanProgress) -> Void,
         shouldCancel: () -> Bool
     ) -> Int {
@@ -194,7 +195,7 @@ struct SnapshotEngine: Sendable {
         ))
         guard let enumerator = FileManager.default.enumerator(
             at: root,
-            includingPropertiesForKeys: keys,
+            includingPropertiesForKeys: nil,
             options: []
         ) else { return 0 }
 
@@ -211,11 +212,7 @@ struct SnapshotEngine: Sendable {
                 continue
             }
             count += 1
-            let values = try? item.resourceValues(forKeys: Set(keys))
-            if values?.isSymbolicLink == true || values?.isReadable == false {
-                enumerator.skipDescendants()
-            }
-            if count.isMultiple(of: 256) {
+            if count.isMultiple(of: 4_096) {
                 progress(SnapshotScanProgress(
                     phase: .counting,
                     processedItems: count,

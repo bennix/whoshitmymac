@@ -21,6 +21,8 @@ struct SnapshotNode: Equatable, Sendable {
 
 final class SnapshotStore: @unchecked Sendable {
     private var db: OpaquePointer?
+    private var insertStatement: OpaquePointer?
+    private var isBatching = false
 
     static func create(at url: URL) throws -> SnapshotStore {
         let store = SnapshotStore()
@@ -30,9 +32,24 @@ final class SnapshotStore: @unchecked Sendable {
     }
 
     deinit {
+        if let insertStatement {
+            sqlite3_finalize(insertStatement)
+        }
         if db != nil {
             sqlite3_close(db)
         }
+    }
+
+    func beginBatch() throws {
+        guard !isBatching else { return }
+        try execute("BEGIN IMMEDIATE TRANSACTION;", operation: "begin batch")
+        isBatching = true
+    }
+
+    func endBatch() throws {
+        guard isBatching else { return }
+        try execute("COMMIT;", operation: "commit batch")
+        isBatching = false
     }
 
     func insert(_ node: SnapshotNode, id: Int64) throws {
@@ -40,11 +57,14 @@ final class SnapshotStore: @unchecked Sendable {
         INSERT INTO nodes (id, parent_id, name, is_dir, size, alloc_size, mtime, inode, flags)
         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?);
         """
-        var stmt: OpaquePointer?
-        guard sqlite3_prepare_v2(db, sql, -1, &stmt, nil) == SQLITE_OK else {
-            throw storeError("prepare insert")
+        if insertStatement == nil {
+            guard sqlite3_prepare_v2(db, sql, -1, &insertStatement, nil) == SQLITE_OK else {
+                throw storeError("prepare insert")
+            }
         }
-        defer { sqlite3_finalize(stmt) }
+        guard let stmt = insertStatement else { throw storeError("missing insert statement") }
+        sqlite3_reset(stmt)
+        sqlite3_clear_bindings(stmt)
         sqlite3_bind_int64(stmt, 1, id)
         if let parent = node.parentId {
             sqlite3_bind_int64(stmt, 2, parent)
@@ -147,6 +167,14 @@ final class SnapshotStore: @unchecked Sendable {
         """
         if sqlite3_exec(db, sql, nil, nil, nil) != SQLITE_OK {
             throw storeError("schema")
+        }
+        try execute("PRAGMA synchronous=NORMAL;", operation: "configure synchronous mode")
+        try execute("PRAGMA temp_store=MEMORY;", operation: "configure temporary storage")
+    }
+
+    private func execute(_ sql: String, operation: String) throws {
+        if sqlite3_exec(db, sql, nil, nil, nil) != SQLITE_OK {
+            throw storeError(operation)
         }
     }
 

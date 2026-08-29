@@ -39,6 +39,7 @@ struct SnapshotEngineTests {
         #expect(flags.contains(where: { $0.contains(.symlink) }))
         #expect(updates.contains(where: { $0.phase == .counting }))
         #expect(updates.contains(where: { $0.phase == .scanning }))
+        #expect(updates.first(where: { $0.phase == .scanning })?.totalItems == 3)
         #expect(updates.last?.phase == .finishing)
         #expect(updates.last?.fraction == 1)
     }

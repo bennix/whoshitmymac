@@ -19,7 +19,7 @@ const features = [
     icon: FolderSearch,
     eyebrow: 'Directory scan',
     title: '看见空间从哪里消失',
-    copy: '按文件和文件夹的实际占用排序，汇总疑似垃圾数量与预计可清理容量，让空间去向一目了然。',
+    copy: '轻量计数、批量写入快照，再按文件和文件夹的实际占用排序，让大目录扫描更快完成。',
   },
   {
     icon: ScanSearch,
