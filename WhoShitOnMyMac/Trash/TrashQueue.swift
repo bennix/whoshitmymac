@@ -98,6 +98,14 @@ struct AdministratorTrashRunner: Sendable {
         }
     }
 
+    static func orderedTasks(_ tasks: [TrashTask]) -> [TrashTask] {
+        tasks.enumerated().sorted { left, right in
+            let leftPriority = taskPriority(left.element)
+            let rightPriority = taskPriority(right.element)
+            return leftPriority == rightPriority ? left.offset < right.offset : leftPriority < rightPriority
+        }.map(\.element)
+    }
+
     func execute(_ tasks: [TrashTask]) -> (ok: Int, succeeded: [URL], failed: [(URL, String)]) {
         let fileManager = FileManager.default
         let trashDirectory = fileManager.homeDirectoryForCurrentUser.appendingPathComponent(".Trash", isDirectory: true)
@@ -107,43 +115,65 @@ struct AdministratorTrashRunner: Sendable {
             return (0, [], tasks.map { ($0.url, error.localizedDescription) })
         }
 
+        var failed = tasks.filter { !Self.canHandle($0) }.map {
+            ($0.url, "管理员模式仅处理应用本体及明确选择的系统级卸载残留")
+        }
+        let eligibleTasks = Self.orderedTasks(tasks.filter { Self.canHandle($0) })
+        guard !eligibleTasks.isEmpty else { return (0, [], failed) }
+
+        let operations = eligibleTasks.map { task in
+            (task: task, destination: uniqueDestination(for: task.url, in: trashDirectory))
+        }
+        let process = Process()
+        let errorPipe = Pipe()
+        process.executableURL = URL(fileURLWithPath: "/usr/bin/osascript")
+        process.arguments = [
+            "-e",
+            Self.appleScript,
+            "\(getuid()):\(getgid())",
+            "\(getuid())"
+        ] + operations.flatMap { operation in
+            [operation.task.url.path, operation.destination.path, Self.taskType(operation.task)]
+        }
+        process.standardError = errorPipe
+
+        do {
+            try process.run()
+            process.waitUntilExit()
+        } catch {
+            return (0, [], failed + eligibleTasks.map { ($0.url, error.localizedDescription) })
+        }
+
+        let errorData = errorPipe.fileHandleForReading.readDataToEndOfFile()
+        let errorText = String(data: errorData, encoding: .utf8)?
+            .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+
         var succeeded: [URL] = []
-        var failed: [(URL, String)] = []
-        for task in tasks {
-            guard Self.canHandle(task) else {
-                failed.append((task.url, "管理员模式仅处理应用本体及明确选择的系统级卸载残留"))
-                continue
-            }
-            let destination = uniqueDestination(for: task.url, in: trashDirectory)
-            let process = Process()
-            let errorPipe = Pipe()
-            process.executableURL = URL(fileURLWithPath: "/usr/bin/osascript")
-            process.arguments = [
-                "-e",
-                Self.appleScript,
-                task.url.path,
-                destination.path,
-                "\(getuid()):\(getgid())",
-                task.url.path.hasPrefix("/Library/LaunchDaemons/") ? "launch-daemon" : "file"
-            ]
-            process.standardError = errorPipe
-            do {
-                try process.run()
-                process.waitUntilExit()
-                let errorData = errorPipe.fileHandleForReading.readDataToEndOfFile()
-                let errorText = String(data: errorData, encoding: .utf8)?
-                    .trimmingCharacters(in: .whitespacesAndNewlines)
-                if !fileManager.fileExists(atPath: task.url.path),
-                   fileManager.fileExists(atPath: destination.path) {
-                    succeeded.append(task.url)
-                } else {
-                    failed.append((task.url, errorText?.isEmpty == false ? errorText! : "未能使用管理员权限移到废纸篓"))
-                }
-            } catch {
-                failed.append((task.url, error.localizedDescription))
+        for operation in operations {
+            if !fileManager.fileExists(atPath: operation.task.url.path),
+               fileManager.fileExists(atPath: operation.destination.path) {
+                succeeded.append(operation.task.url)
+            } else {
+                let detail = process.terminationStatus == 0 || errorText.isEmpty
+                    ? "管理员批量操作未能移到废纸篓，目标可能仍被系统服务占用"
+                    : errorText
+                failed.append((operation.task.url, detail))
             }
         }
         return (succeeded.count, succeeded, failed)
+    }
+
+    private static func taskPriority(_ task: TrashTask) -> Int {
+        let type = taskType(task)
+        if type == "launch-agent" || type == "launch-daemon" { return 0 }
+        if task.source == "卸载" { return 1 }
+        return 2
+    }
+
+    private static func taskType(_ task: TrashTask) -> String {
+        if task.url.path.hasPrefix("/Library/LaunchDaemons/") { return "launch-daemon" }
+        if task.url.path.hasPrefix("/Library/LaunchAgents/") { return "launch-agent" }
+        return "file"
     }
 
     private func uniqueDestination(for source: URL, in trashDirectory: URL) -> URL {
@@ -162,15 +192,24 @@ struct AdministratorTrashRunner: Sendable {
 
     private static let appleScript = """
     on run argv
-        set sourcePath to item 1 of argv
-        set destinationPath to item 2 of argv
-        set ownerSpec to item 3 of argv
-        set itemType to item 4 of argv
-        set commandText to "/bin/mv -n " & quoted form of sourcePath & " " & quoted form of destinationPath & " && /usr/sbin/chown -R " & quoted form of ownerSpec & " " & quoted form of destinationPath
-        if itemType is "launch-daemon" then
-            set commandText to "/bin/launchctl bootout system " & quoted form of sourcePath & " >/dev/null 2>&1 || true; " & commandText
-        end if
-        do shell script commandText with administrator privileges
+        set ownerSpec to item 1 of argv
+        set userID to item 2 of argv
+        set commandText to ""
+        repeat with argumentIndex from 3 to count argv by 3
+            set sourcePath to item argumentIndex of argv
+            set destinationPath to item (argumentIndex + 1) of argv
+            set itemType to item (argumentIndex + 2) of argv
+            set actionCommand to "/bin/mv -n " & quoted form of sourcePath & " " & quoted form of destinationPath & " && /usr/sbin/chown -R " & quoted form of ownerSpec & " " & quoted form of destinationPath
+            if itemType is "launch-daemon" then
+                set actionCommand to "(/bin/launchctl bootout system " & quoted form of sourcePath & " >/dev/null 2>&1 || true); " & actionCommand
+            else if itemType is "launch-agent" then
+                set actionCommand to "(/bin/launchctl bootout gui/" & userID & " " & quoted form of sourcePath & " >/dev/null 2>&1 || true); " & actionCommand
+            end if
+            set wrappedCommand to "(" & actionCommand & ") >/dev/null 2>&1 || true"
+            if commandText is not "" then set commandText to commandText & "; "
+            set commandText to commandText & wrappedCommand
+        end repeat
+        do shell script commandText & "; /usr/bin/true" with administrator privileges
     end run
     """
 }

@@ -31,7 +31,7 @@ const features = [
     icon: Trash2,
     eyebrow: 'App uninstall',
     title: '卸载应用，也找到残留',
-    copy: '预览应用本体与关联残留；遇到受保护的顽固应用时，可由用户通过 macOS 管理员认证后移入废纸篓。',
+    copy: '运行中的应用可先正常退出、超时后强退；受保护的应用与残留可通过一次 macOS 管理员认证批量移入废纸篓。',
   },
 ];
 

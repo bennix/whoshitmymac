@@ -3,6 +3,7 @@ import SwiftUI
 
 struct AppsPane: View {
     @Environment(AppState.self) private var state
+    @State private var showForceQuitConfirmation = false
 
     var body: some View {
         HSplitView {
@@ -89,13 +90,20 @@ struct AppsPane: View {
                                 }
                             }
                         }
-                        Button("加入待删除") {
-                            state.enqueue(url: plan.appURL, bytes: 0, source: "卸载")
-                            for item in plan.residues where state.selectedResidues.contains(item.id) {
-                                state.enqueue(url: item.url, bytes: 0, source: "卸载残留")
+                        Button(state.selectedApp?.isRunning == true ? "退出并加入待删除" : "加入待删除") {
+                            if state.selectedApp?.isRunning == true {
+                                showForceQuitConfirmation = true
+                            } else {
+                                state.enqueueSelectedUninstall(forceQuitIfRunning: false)
                             }
                         }
-                        .disabled(state.selectedApp?.isRunning == true)
+                        .disabled(state.isQuittingApp)
+                        if state.isQuittingApp {
+                            HStack {
+                                ProgressView().controlSize(.small)
+                                Text("正在退出应用…").foregroundStyle(.secondary)
+                            }
+                        }
                     }
                 } else {
                     Text("选择一个应用以预览残留").foregroundStyle(.secondary)
@@ -111,6 +119,19 @@ struct AppsPane: View {
         }
         .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
             state.pruneMissingInstalledApps()
+            state.refreshInstalledAppRunningStates()
+        }
+        .confirmationDialog(
+            "退出正在运行的应用？",
+            isPresented: $showForceQuitConfirmation,
+            titleVisibility: .visible
+        ) {
+            Button("退出（必要时强制退出）并加入待删除", role: .destructive) {
+                state.enqueueSelectedUninstall(forceQuitIfRunning: true)
+            }
+            Button("取消", role: .cancel) {}
+        } message: {
+            Text("会先请求应用正常退出；若超时则强制退出，未保存的内容可能丢失。")
         }
     }
 

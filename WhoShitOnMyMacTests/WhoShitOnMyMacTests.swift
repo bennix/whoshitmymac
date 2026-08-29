@@ -63,4 +63,26 @@ struct WhoShitOnMyMacTests {
 
         #expect(remaining == [present])
     }
+
+    @Test func forceQuitMatchingRequiresExactBundleAndApplicationPath() {
+        let target = URL(fileURLWithPath: "/Applications/Example.app")
+        #expect(AppProcessController.matches(
+            bundleIdentifier: "com.example.utility",
+            appURL: target,
+            candidateBundleIdentifier: "com.example.utility",
+            candidateBundleURL: target
+        ))
+        #expect(!AppProcessController.matches(
+            bundleIdentifier: "com.example.utility",
+            appURL: target,
+            candidateBundleIdentifier: "com.example.other",
+            candidateBundleURL: target
+        ))
+        #expect(!AppProcessController.matches(
+            bundleIdentifier: "com.example.utility",
+            appURL: target,
+            candidateBundleIdentifier: "com.example.utility",
+            candidateBundleURL: URL(fileURLWithPath: "/Users/test/Applications/Example.app")
+        ))
+    }
 }

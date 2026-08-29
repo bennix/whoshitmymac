@@ -60,10 +60,11 @@ struct DryRunSheet: View {
                         state.permission.openAppManagementSettings()
                     }
                     if state.canRetryFailedItemsWithAdministratorPrivileges {
-                        Button("使用管理员权限重试") {
+                        Button("一次认证清理失败项") {
                             state.runTrashWithAdministratorPrivileges()
                         }
                         .disabled(state.isTrashing)
+                        .help("一次管理员认证处理全部可提权的应用与卸载残留")
                     }
                 }
             }

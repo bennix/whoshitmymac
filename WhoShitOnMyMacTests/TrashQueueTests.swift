@@ -53,4 +53,15 @@ struct TrashQueueTests {
         #expect(AdministratorTrashRunner.canHandle(TrashTask(url: URL(fileURLWithPath: "/Library/LaunchDaemons/com.example.helper.plist"), bytes: 0, source: "卸载残留")))
         #expect(!AdministratorTrashRunner.canHandle(TrashTask(url: URL(fileURLWithPath: "/Library/LaunchDaemons/com.example.helper.plist"), bytes: 0, source: "垃圾")))
     }
+
+    @Test func administratorRetryStopsLaunchJobsBeforeMovingApplication() {
+        let app = TrashTask(url: URL(fileURLWithPath: "/Applications/Example.app"), bytes: 0, source: "卸载")
+        let support = TrashTask(url: URL(fileURLWithPath: "/Library/Application Support/Example"), bytes: 0, source: "卸载残留")
+        let agent = TrashTask(url: URL(fileURLWithPath: "/Library/LaunchAgents/com.example.agent.plist"), bytes: 0, source: "卸载残留")
+        let daemon = TrashTask(url: URL(fileURLWithPath: "/Library/LaunchDaemons/com.example.daemon.plist"), bytes: 0, source: "卸载残留")
+
+        let ordered = AdministratorTrashRunner.orderedTasks([support, app, agent, daemon])
+
+        #expect(ordered.map(\.url.path) == [agent.url.path, daemon.url.path, app.url.path, support.url.path])
+    }
 }

@@ -49,6 +49,7 @@ final class AppState {
     var showOnboarding: Bool
     var lastExecuteFailed: [(URL, String)] = []
     var isTrashing = false
+    var isQuittingApp = false
     var allowPermanentDelete = false
     var whitelistDraft = ""
 
@@ -201,6 +202,10 @@ final class AppState {
             !attemptedPaths.contains(PathNormalizer.resolve($0.0).path)
         }
         DispatchQueue.global(qos: .userInitiated).async { [weak self] in
+            for task in tasks where task.source == "卸载" {
+                guard let bundleIdentifier = Bundle(url: task.url)?.bundleIdentifier else { continue }
+                _ = AppProcessController.quit(appURL: task.url, bundleIdentifier: bundleIdentifier)
+            }
             let outcome = AdministratorTrashRunner().execute(tasks)
             for failure in outcome.failed {
                 try? OperationLog(fileURL: AppPaths.operationsLog).append(
@@ -346,6 +351,80 @@ final class AppState {
         )
         uninstallPlan = plan
         selectedResidues = Set(plan.residues.filter(\.selectedByDefault).map(\.id))
+    }
+
+    func enqueueSelectedUninstall(forceQuitIfRunning: Bool) {
+        guard let app = selectedApp,
+              let plan = uninstallPlan,
+              !plan.blocked,
+              PathNormalizer.resolve(app.url).path == PathNormalizer.resolve(plan.appURL).path else { return }
+        let selectedResidueIDs = selectedResidues
+        let isRunning = AppProcessController.isRunning(appURL: app.url, bundleIdentifier: app.bundleId)
+        updateRunningState(for: app, isRunning: isRunning)
+        if isRunning && !forceQuitIfRunning {
+            lastMessage = "应用仍在运行，请先退出或选择强制退出后继续"
+            return
+        }
+        guard isRunning else {
+            enqueueUninstallItems(app: app, plan: plan, selectedResidueIDs: selectedResidueIDs)
+            return
+        }
+
+        isQuittingApp = true
+        lastMessage = "正在退出 \(app.name)…"
+        DispatchQueue.global(qos: .userInitiated).async { [weak self] in
+            let outcome = AppProcessController.quit(appURL: app.url, bundleIdentifier: app.bundleId)
+            DispatchQueue.main.async {
+                guard let self else { return }
+                self.isQuittingApp = false
+                let stillRunning = AppProcessController.isRunning(appURL: app.url, bundleIdentifier: app.bundleId)
+                self.updateRunningState(for: app, isRunning: stillRunning)
+                guard !stillRunning, outcome != .failed else {
+                    self.lastMessage = "无法退出 \(app.name)，请保存工作后重试或在活动监视器中检查其进程"
+                    return
+                }
+                self.enqueueUninstallItems(app: app, plan: plan, selectedResidueIDs: selectedResidueIDs)
+                self.lastMessage = outcome == .forceTerminated
+                    ? "已强制退出 \(app.name) 并加入待删除"
+                    : "已退出 \(app.name) 并加入待删除"
+            }
+        }
+    }
+
+    func refreshInstalledAppRunningStates() {
+        for index in installedApps.indices {
+            installedApps[index].isRunning = AppProcessController.isRunning(
+                appURL: installedApps[index].url,
+                bundleIdentifier: installedApps[index].bundleId
+            )
+        }
+        if let selectedApp,
+           let updated = installedApps.first(where: { $0.id == selectedApp.id }) {
+            self.selectedApp = updated
+        }
+    }
+
+    private func enqueueUninstallItems(
+        app: InstalledApp,
+        plan: UninstallPlan,
+        selectedResidueIDs: Set<String>
+    ) {
+        enqueue(url: plan.appURL, bytes: app.bytes ?? 0, source: "卸载")
+        for item in plan.residues where selectedResidueIDs.contains(item.id) {
+            enqueue(url: item.url, bytes: 0, source: "卸载残留")
+        }
+        if lastMessage == nil {
+            lastMessage = "已将 \(app.name) 及选中的残留加入待删除"
+        }
+    }
+
+    private func updateRunningState(for app: InstalledApp, isRunning: Bool) {
+        if let index = installedApps.firstIndex(where: { $0.id == app.id }) {
+            installedApps[index].isRunning = isRunning
+        }
+        if selectedApp?.id == app.id {
+            selectedApp?.isRunning = isRunning
+        }
     }
 
     func scanJunk() {
