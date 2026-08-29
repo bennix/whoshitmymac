@@ -16,10 +16,11 @@ struct PendingBar: View {
                     ProgressView()
                         .controlSize(.small)
                 } else {
-                    Text("移到废纸篓")
+                    Text(state.mayRequestAdministratorPrivileges ? "清理所选项目" : "移到废纸篓")
                 }
             }
             .disabled(state.isTrashing || state.queue.tasks.isEmpty)
+            .help(state.mayRequestAdministratorPrivileges ? "必要时会请求一次管理员认证" : "移动到废纸篓")
         }
         .padding(10)
         .background(.bar)
@@ -71,10 +72,11 @@ struct DryRunSheet: View {
             HStack {
                 Spacer()
                 Button("关闭") { dismiss() }
-                Button("移到废纸篓") {
+                Button(state.mayRequestAdministratorPrivileges ? "清理所选项目" : "移到废纸篓") {
                     state.runTrash()
                 }
                 .disabled(state.isTrashing || state.queue.tasks.isEmpty)
+                .help(state.mayRequestAdministratorPrivileges ? "必要时会请求一次管理员认证" : "移动到废纸篓")
             }
         }
         .padding()

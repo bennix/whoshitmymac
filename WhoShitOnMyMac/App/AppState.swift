@@ -153,36 +153,58 @@ final class AppState {
         let before = volumeFree()
         DispatchQueue.global(qos: .userInitiated).async { [weak self] in
             let outcome = TrashRunner().execute(pendingQueue)
+            var succeeded = outcome.succeeded
+            var failed = outcome.failed
+            let administratorTasks = AdministratorTrashRunner.retryTasks(
+                in: pendingQueue,
+                failedURLs: failed.map(\.0)
+            )
+            if !administratorTasks.isEmpty {
+                for task in administratorTasks where task.source == "卸载" {
+                    guard let bundleIdentifier = Bundle(url: task.url)?.bundleIdentifier else { continue }
+                    _ = AppProcessController.quit(appURL: task.url, bundleIdentifier: bundleIdentifier)
+                }
+                let administratorOutcome = AdministratorTrashRunner().execute(administratorTasks)
+                let attemptedPaths = Set(administratorTasks.map { PathNormalizer.resolve($0.url).path })
+                succeeded.append(contentsOf: administratorOutcome.succeeded)
+                failed = failed.filter { !attemptedPaths.contains(PathNormalizer.resolve($0.0).path) }
+                    + administratorOutcome.failed
+                try? OperationLog(fileURL: AppPaths.operationsLog).append(
+                    "automatic admin trash ok=\(administratorOutcome.ok) failed=\(administratorOutcome.failed.count)"
+                )
+            }
             let after = self?.volumeFree() ?? before
             let delta = after - before
             try? OperationLog(fileURL: AppPaths.operationsLog).append(
-                "trash ok=\(outcome.ok) failed=\(outcome.failed.count) delta=\(delta)"
+                "trash ok=\(succeeded.count) failed=\(failed.count) delta=\(delta)"
             )
-            for failure in outcome.failed {
+            for failure in failed {
                 try? OperationLog(fileURL: AppPaths.operationsLog).append(
                     "trash failed path=\(failure.0.path) error=\(failure.1)"
                 )
             }
-            let succeededPaths = Set(outcome.succeeded.map { PathNormalizer.resolve($0).path })
+            let completedURLs = succeeded
+            let finalFailures = failed
+            let succeededPaths = Set(completedURLs.map { PathNormalizer.resolve($0).path })
             let succeededSnapshotNames = Set<String>(pendingQueue.tasks.compactMap { task -> String? in
                 guard task.source == "快照", succeededPaths.contains(PathNormalizer.resolve(task.url).path) else { return nil }
                 return task.url.lastPathComponent
             })
             DispatchQueue.main.async {
                 guard let self else { return }
-                self.lastExecuteFailed = outcome.failed
+                self.lastExecuteFailed = finalFailures
                 self.queue.tasks.removeAll { succeededPaths.contains(PathNormalizer.resolve($0.url).path) }
                 self.junkItems.removeAll { succeededPaths.contains(PathNormalizer.resolve($0.path).path) }
                 self.selectedJunk.subtract(succeededPaths)
                 self.diffEntries.removeAll { succeededSnapshotNames.contains($0.relativePath) }
                 self.selectedDiffs.subtract(succeededSnapshotNames)
-                self.reconcileInstalledApps(afterRemoving: outcome.succeeded)
+                self.reconcileInstalledApps(afterRemoving: completedURLs)
                 self.isTrashing = false
-                if let firstFailure = outcome.failed.first {
-                    self.lastMessage = "完成 \(outcome.ok) 项，失败 \(outcome.failed.count)：\(firstFailure.1)"
+                if let firstFailure = finalFailures.first {
+                    self.lastMessage = "完成 \(completedURLs.count) 项，失败 \(finalFailures.count)：\(firstFailure.1)"
                     self.showDryRun = true
                 } else {
-                    self.lastMessage = "完成 \(outcome.ok) 项，可用空间变化 \(ByteFormat.string(delta))"
+                    self.lastMessage = "完成 \(completedURLs.count) 项，可用空间变化 \(ByteFormat.string(delta))"
                 }
             }
         }
@@ -238,6 +260,10 @@ final class AppState {
             failedPaths.contains(PathNormalizer.resolve($0.url).path)
                 && AdministratorTrashRunner.canHandle($0)
         }
+    }
+
+    var mayRequestAdministratorPrivileges: Bool {
+        queue.tasks.contains { AdministratorTrashRunner.canHandle($0) }
     }
 
     func pruneMissingInstalledApps() {

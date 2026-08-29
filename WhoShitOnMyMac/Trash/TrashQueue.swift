@@ -106,6 +106,13 @@ struct AdministratorTrashRunner: Sendable {
         }.map(\.element)
     }
 
+    static func retryTasks(in queue: TrashQueue, failedURLs: [URL]) -> [TrashTask] {
+        let failedPaths = Set(failedURLs.map { PathNormalizer.resolve($0).path })
+        return queue.tasks.filter {
+            failedPaths.contains(PathNormalizer.resolve($0.url).path) && canHandle($0)
+        }
+    }
+
     func execute(_ tasks: [TrashTask]) -> (ok: Int, succeeded: [URL], failed: [(URL, String)]) {
         let fileManager = FileManager.default
         let trashDirectory = fileManager.homeDirectoryForCurrentUser.appendingPathComponent(".Trash", isDirectory: true)

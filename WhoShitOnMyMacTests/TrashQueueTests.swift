@@ -64,4 +64,19 @@ struct TrashQueueTests {
 
         #expect(ordered.map(\.url.path) == [agent.url.path, daemon.url.path, app.url.path, support.url.path])
     }
+
+    @Test func automaticAdministratorRetryIncludesOnlyFailedUninstallItems() {
+        var queue = TrashQueue()
+        let failedApp = TrashTask(url: URL(fileURLWithPath: "/Applications/Example.app"), bytes: 0, source: "卸载")
+        let successfulDaemon = TrashTask(url: URL(fileURLWithPath: "/Library/LaunchDaemons/com.example.daemon.plist"), bytes: 0, source: "卸载残留")
+        let failedJunk = TrashTask(url: URL(fileURLWithPath: "/Library/Application Support/Example/cache"), bytes: 0, source: "垃圾")
+        queue.tasks = [failedApp, successfulDaemon, failedJunk]
+
+        let retry = AdministratorTrashRunner.retryTasks(
+            in: queue,
+            failedURLs: [failedApp.url, failedJunk.url]
+        )
+
+        #expect(retry == [failedApp])
+    }
 }
