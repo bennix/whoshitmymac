@@ -5,11 +5,11 @@
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <meta name="theme-color" content="#081421" />
     <title>WhoShitOnMyMac — 看清是谁把硬盘弄脏了</title>
-    <meta name="description" content="安全优先的原生 Mac 清理工具：目录扫描、垃圾扫描、应用卸载，默认只进废纸篓。" />
+    <meta name="description" content="安全优先的原生 Mac 清理工具：目录扫描、垃圾扫描、微信括号副本去重、应用卸载，默认只进废纸篓。" />
     <link rel="canonical" href="https://bennix.github.io/whoshitmymac/" />
     <link rel="icon" href="./app-icon.png" />
     <meta property="og:title" content="WhoShitOnMyMac — 看清是谁把硬盘弄脏了" />
-    <meta property="og:description" content="安全优先的原生 Mac 清理工具：目录扫描、垃圾扫描、应用卸载。" />
+    <meta property="og:description" content="安全优先的原生 Mac 清理工具：目录扫描、垃圾扫描、微信括号副本去重、应用卸载。" />
     <meta property="og:type" content="website" />
     <meta property="og:url" content="https://bennix.github.io/whoshitmymac/" />
     <meta property="og:image" content="https://bennix.github.io/whoshitmymac/og.png" />
@@ -32,26 +32,26 @@
         <div class="hero-copy">
           <p class="trust"><span aria-hidden="true">✓</span> Developer ID 签名 · Apple 公证</p>
           <h1>看清是谁把硬盘<br /><span>弄脏了。</span></h1>
-          <p class="lede">一款安全优先的原生 Mac 清理工具。目录扫描、垃圾扫描、应用卸载，所有删除先预览，默认只进废纸篓。</p>
+          <p class="lede">一款安全优先的原生 Mac 清理工具。目录扫描、垃圾扫描、微信括号副本去重、应用卸载，所有删除先预览，默认只进废纸篓。</p>
           <div class="actions">
-            <a class="button primary" href="https://github.com/bennix/whoshitmymac/releases/download/v1.0.0/WhoShitOnMyMac-1.0.0.dmg">↓&nbsp; 下载 macOS 版</a>
+            <a class="button primary" href="https://github.com/bennix/whoshitmymac/releases/download/v1.1.0/WhoShitOnMyMac-1.1.0.dmg">↓&nbsp; 下载 macOS 版</a>
             <a class="button secondary" href="#features">查看功能</a>
           </div>
-          <p class="requirements">v1.0.0 · macOS 14 Sonoma 或更高版本 · Apple Silicon / Intel</p>
+          <p class="requirements">v1.1.0 · macOS 14 Sonoma 或更高版本 · Apple Silicon / Intel</p>
         </div>
 
         <div class="icon-stage" aria-label="WhoShitOnMyMac 应用图标">
           <div class="icon-glow" aria-hidden="true"></div>
           <div class="icon-card">
             <img src="./app-icon.png" alt="WhoShitOnMyMac 应用图标" width="380" height="380" />
-            <div class="icon-labels"><span>扫描</span><span>清理</span><span>卸载</span></div>
+            <div class="icon-labels"><span>扫描</span><span>清理</span><span>微信</span><span>卸载</span></div>
           </div>
         </div>
       </section>
 
       <section class="feature-section" id="features">
         <div class="shell">
-          <p class="eyebrow">THREE CLEAR ANSWERS</p>
+          <p class="eyebrow">FOUR CLEAR ANSWERS</p>
           <h2>少一点猜测，多一点证据。</h2>
           <div class="feature-grid">
             <article>
@@ -65,6 +65,12 @@
               <small>JUNK SCAN</small>
               <h3>只清理能解释的内容</h3>
               <p>按缓存、日志、安装包、开发产物等类别扫描；无法证明安全的目标会被跳过。</p>
+            </article>
+            <article>
+              <span class="feature-icon" aria-hidden="true">✎</span>
+              <small>WECHAT DUPES</small>
+              <h3>只删核对过的微信括号副本</h3>
+              <p>只处理 xwechat_files 里文件名末尾带 (1)/(2) 的附件，并且 MD5 与无括号原件相同。标题中间的中文括号不算副本。</p>
             </article>
             <article>
               <span class="feature-icon" aria-hidden="true">♲</span>
@@ -90,6 +96,6 @@
       </section>
     </main>
 
-    <footer>WhoShitOnMyMac · Built for macOS · <a href="https://github.com/bennix/whoshitmymac/releases/tag/v1.0.0">GitHub Release</a></footer>
+    <footer>WhoShitOnMyMac · Built for macOS · <a href="https://github.com/bennix/whoshitmymac/releases/tag/v1.1.0">GitHub Release</a></footer>
   </body>
 </html>

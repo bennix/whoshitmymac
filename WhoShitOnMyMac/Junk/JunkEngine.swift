@@ -1,7 +1,7 @@
 import Foundation
 
 enum JunkGroup: String, Codable, Sendable, CaseIterable {
-    case caches, logs, trash, browsers, devCaches, orphans, installers, artifacts, sensitive
+    case caches, logs, trash, browsers, devCaches, orphans, installers, artifacts, sensitive, wechatDupes
 }
 
 enum SkipReason: String, Equatable, Sendable {
@@ -19,8 +19,25 @@ struct JunkItem: Equatable, Sendable, Identifiable {
     var group: JunkGroup
     var skipReason: SkipReason
     var selectedByDefault: Bool
+    var detail: String
 
     var id: String { path.path }
+
+    init(
+        path: URL,
+        bytes: Int64,
+        group: JunkGroup,
+        skipReason: SkipReason,
+        selectedByDefault: Bool,
+        detail: String = ""
+    ) {
+        self.path = path
+        self.bytes = bytes
+        self.group = group
+        self.skipReason = skipReason
+        self.selectedByDefault = selectedByDefault
+        self.detail = detail
+    }
 }
 
 struct JunkRule: Codable, Sendable {
@@ -59,11 +76,30 @@ struct JunkEngine: Sendable {
                 items.append(contentsOf: scanArtifacts(rule, blacklist: blacklist, whitelist: whitelist))
             case .orphans:
                 items.append(contentsOf: scanOrphans(rule, blacklist: blacklist, whitelist: whitelist))
+            case .wechatDupes:
+                break
             default:
                 items.append(contentsOf: scanDirectories(rule, blacklist: blacklist, whitelist: whitelist))
             }
         }
+        items.append(contentsOf: wechatDuplicateItems(blacklist: blacklist, whitelist: whitelist))
         return items
+    }
+
+    func wechatDuplicateItems(blacklist: (URL) -> Bool, whitelist: (URL) -> Bool) -> [JunkItem] {
+        if isBusy(.wechatDupes) { return [] }
+        let root = WeChatDuplicateFinder.defaultWeChatFilesRoot(home: home)
+        return WeChatDuplicateFinder.findTrashableCopies(in: root).compactMap { copy in
+            makeItem(
+                copy.url,
+                group: .wechatDupes,
+                blacklist: blacklist,
+                whitelist: whitelist,
+                skip: .none,
+                detail: "原件：\(copy.originalURL.lastPathComponent)",
+                bytes: copy.bytes
+            )
+        }
     }
 
     private func scanDirectories(_ rule: JunkRule, blacklist: (URL) -> Bool, whitelist: (URL) -> Bool) -> [JunkItem] {
@@ -147,12 +183,34 @@ struct JunkEngine: Sendable {
         return items
     }
 
-    private func makeItem(_ url: URL, group: JunkGroup, blacklist: (URL) -> Bool, whitelist: (URL) -> Bool, skip: SkipReason) -> JunkItem? {
+    private func makeItem(
+        _ url: URL,
+        group: JunkGroup,
+        blacklist: (URL) -> Bool,
+        whitelist: (URL) -> Bool,
+        skip: SkipReason,
+        detail: String = "",
+        bytes: Int64? = nil
+    ) -> JunkItem? {
         var reason = skip
         if blacklist(url) { reason = .blacklist }
         else if whitelist(url) { reason = .whitelist }
-        let bytes = directorySize(url)
-        return JunkItem(path: url, bytes: bytes, group: group, skipReason: reason, selectedByDefault: false)
+        return JunkItem(
+            path: url,
+            bytes: bytes ?? itemSize(url),
+            group: group,
+            skipReason: reason,
+            selectedByDefault: false,
+            detail: detail
+        )
+    }
+
+    private func itemSize(_ url: URL) -> Int64 {
+        let values = try? url.resourceValues(forKeys: [.isDirectoryKey, .fileSizeKey])
+        if values?.isDirectory == true {
+            return directorySize(url)
+        }
+        return Int64(values?.fileSize ?? 0)
     }
 
     private func directorySize(_ url: URL) -> Int64 {

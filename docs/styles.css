@@ -52,12 +52,12 @@ h1 span { color: transparent; background: linear-gradient(100deg, var(--cyan), v
 .icon-glow { position: absolute; inset: 12%; border-radius: 50%; background: rgba(54,229,201,.25); filter: blur(75px); }
 .icon-card { position: relative; padding: 38px; border: 1px solid var(--line); border-radius: 38px; background: linear-gradient(180deg, rgba(255,255,255,.09), rgba(255,255,255,.025)); box-shadow: 0 38px 120px rgba(0,0,0,.5); backdrop-filter: blur(24px); }
 .icon-card > img { display: block; width: 100%; height: auto; filter: drop-shadow(0 28px 38px rgba(0,0,0,.42)); }
-.icon-labels { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin-top: 22px; }
+.icon-labels { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; margin-top: 22px; }
 .icon-labels span { padding: 10px 5px; border: 1px solid rgba(255,255,255,.07); border-radius: 9px; background: rgba(0,0,0,.15); color: #bcc9d3; text-align: center; font-size: 12px; font-weight: 600; }
 .feature-section { padding: 96px 0; border-block: 1px solid rgba(255,255,255,.07); background: rgba(255,255,255,.022); }
 .eyebrow { margin: 0; color: var(--cyan); font-size: 11px; font-weight: 800; letter-spacing: .2em; }
 h2 { max-width: 700px; margin: 16px 0 0; font-size: clamp(38px, 5vw, 54px); line-height: 1.08; letter-spacing: -.05em; }
-.feature-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; margin-top: 48px; }
+.feature-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 16px; margin-top: 48px; }
 .feature-grid article { padding: 28px; border: 1px solid var(--line); border-radius: 25px; background: rgba(5,14,24,.48); }
 .feature-icon { display: grid; width: 44px; height: 44px; place-items: center; border: 1px solid rgba(113,240,220,.18); border-radius: 15px; background: rgba(113,240,220,.07); color: var(--cyan); font-size: 22px; }
 .feature-grid small { display: block; margin-top: 27px; color: #607486; font-size: 10px; font-weight: 800; letter-spacing: .18em; }
@@ -92,6 +92,7 @@ footer a { color: #96adbd; }
   .actions { flex-direction: column; }
   .button { width: 100%; }
   .icon-card { padding: 24px; border-radius: 28px; }
+  .icon-labels { grid-template-columns: repeat(2, 1fr); }
   .feature-section, .safety { padding-block: 72px; }
 }
 

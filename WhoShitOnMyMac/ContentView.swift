@@ -24,6 +24,8 @@ struct ContentView: View {
                         SnapshotPane(snapshots: snapshots)
                     case .junk:
                         JunkPane()
+                    case .wechat:
+                        WeChatPane()
                     case .apps:
                         AppsPane()
                     case .settings:

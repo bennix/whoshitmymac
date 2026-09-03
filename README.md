@@ -8,7 +8,7 @@ WhoShitOnMyMac 是一款安全优先的原生 macOS 清理与卸载工具。它�
 
 ## 下载
 
-[下载已签名并经过 Apple 公证的 v1.0.0 DMG](https://github.com/bennix/whoshitmymac/releases/download/v1.0.0/WhoShitOnMyMac-1.0.0.dmg)
+[下载已签名并经过 Apple 公证的 v1.1.0 DMG](https://github.com/bennix/whoshitmymac/releases/download/v1.1.0/WhoShitOnMyMac-1.1.0.dmg)
 
 - macOS 14 Sonoma 或更高版本
 - 支持 Apple Silicon 与 Intel Mac
@@ -18,6 +18,7 @@ WhoShitOnMyMac 是一款安全优先的原生 macOS 清理与卸载工具。它�
 
 - **目录扫描**：轻量计数并批量写入快照，按根级文件与文件夹的递归总容量排序，显示疑似垃圾数量和预计可清理空间。
 - **垃圾扫描**：按缓存、日志、浏览器、开发工具、安装包和工程产物等类别检查空间。
+- **微信括号副本**：只处理 `xwechat_files` 里文件名末尾带 `(1)` / `(2)` 的附件，并且 MD5 与某份无括号原件相同；标题中间的中文括号不算副本。
 - **应用卸载**：预览应用本体和关联残留；运行中的应用可先正常退出、超时后强退，首次清理时会按需通过一次 macOS 管理员认证批量处理受保护项目。
 - **安全保护**：系统路径黑名单、用户白名单、预览队列和操作历史。
 - **可恢复删除**：默认只移动到废纸篓，不直接永久删除。

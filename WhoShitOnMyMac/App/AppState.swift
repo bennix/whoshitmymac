@@ -5,6 +5,7 @@ import Observation
 enum SidebarItem: String, CaseIterable, Identifiable {
     case snapshots = "扫描"
     case junk = "垃圾"
+    case wechat = "微信"
     case apps = "应用"
     case settings = "设置"
     var id: String { rawValue }
@@ -33,6 +34,7 @@ final class AppState {
     var scanFraction: Double?
     var scanDetail = ""
     var isScanningJunk = false
+    var isScanningWeChat = false
     var isLoadingApps = false
     var appLoadProgress = ""
     var junkItems: [JunkItem] = []
@@ -79,10 +81,10 @@ final class AppState {
         }
     }
 
-    func setJunkSelected(_ item: JunkItem, selected: Bool) {
+    func setJunkSelected(_ item: JunkItem, selected: Bool, source: String = "垃圾") {
         if selected {
             let rejection = queue.enqueue(
-                TrashTask(url: item.path, bytes: item.bytes, source: "垃圾"),
+                TrashTask(url: item.path, bytes: item.bytes, source: source),
                 appSupport: AppPaths.applicationSupport,
                 whitelist: { self.whitelist.contains($0) }
             )
@@ -487,6 +489,44 @@ final class AppState {
                 self.isScanningJunk = false
                 self.lastMessage = "垃圾扫描完成，共发现 \(items.count) 项"
             }
+        }
+    }
+
+    func scanWeChatDuplicates() {
+        guard !isScanningWeChat else { return }
+        isScanningWeChat = true
+        lastMessage = nil
+        let whitelist = whitelist
+        DispatchQueue.global(qos: .userInitiated).async { [weak self] in
+            let engine = JunkEngine(
+                rules: [],
+                home: FileManager.default.homeDirectoryForCurrentUser,
+                now: Date(),
+                isBusy: { _ in false },
+                isInstalledBundle: { _ in false }
+            )
+            let found = engine.wechatDuplicateItems(
+                blacklist: { Blacklist.blocks($0, appSupport: AppPaths.applicationSupport) },
+                whitelist: { whitelist.contains($0) }
+            )
+            DispatchQueue.main.async {
+                guard let self else { return }
+                self.junkItems.removeAll { $0.group == .wechatDupes }
+                self.junkItems.append(contentsOf: found)
+                for item in found {
+                    self.selectedJunk.remove(item.id)
+                }
+                self.isScanningWeChat = false
+                self.lastMessage = found.isEmpty
+                    ? "没有找到与原件 MD5 相同的微信括号副本"
+                    : "微信副本 \(found.count) 项，约 \(ByteFormat.string(found.reduce(0) { $0 + $1.bytes }))"
+            }
+        }
+    }
+
+    func selectAllWeChatDupes() {
+        for item in junkItems where item.group == .wechatDupes && item.skipReason == .none {
+            setJunkSelected(item, selected: true, source: "微信")
         }
     }
 

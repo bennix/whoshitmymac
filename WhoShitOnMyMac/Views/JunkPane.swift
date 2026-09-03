@@ -34,6 +34,9 @@ struct JunkPane: View {
                                         .disabled(item.skipReason != .none && item.skipReason != .recentActivity)
                                     VStack(alignment: .leading) {
                                         Text(item.path.path)
+                                        if !item.detail.isEmpty {
+                                            Text(item.detail).font(.caption).foregroundStyle(.secondary)
+                                        }
                                         if item.skipReason != .none {
                                             Text(skipText(item.skipReason)).font(.caption).foregroundStyle(.secondary)
                                         }
@@ -63,6 +66,7 @@ struct JunkPane: View {
         case .installers: return "安装包"
         case .artifacts: return "工程产物"
         case .sensitive: return "备份 / 敏感（请谨慎）"
+        case .wechatDupes: return "微信重复文件（括号副本）"
         }
     }
 

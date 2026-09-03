@@ -6,13 +6,14 @@ import {
   ExternalLink,
   FolderSearch,
   History,
+  MessageCircle,
   ScanSearch,
   ShieldCheck,
   Trash2,
 } from 'lucide-react';
 
 const downloadUrl =
-  'https://github.com/bennix/whoshitmymac/releases/download/v1.0.0/WhoShitOnMyMac-1.0.0.dmg';
+  'https://github.com/bennix/whoshitmymac/releases/download/v1.1.0/WhoShitOnMyMac-1.1.0.dmg';
 
 const features = [
   {
@@ -26,6 +27,12 @@ const features = [
     eyebrow: 'Junk scan',
     title: '只清理能解释的内容',
     copy: '按缓存、日志、安装包、开发产物等类别扫描；无法证明安全的目标会被跳过。',
+  },
+  {
+    icon: MessageCircle,
+    eyebrow: 'WeChat dupes',
+    title: '只删核对过的微信括号副本',
+    copy: '只处理 xwechat_files 里文件名末尾带 (1)/(2) 的附件，并且 MD5 与无括号原件相同。标题中间的中文括号不算副本。',
   },
   {
     icon: Trash2,
@@ -71,7 +78,7 @@ export default function Home() {
             <span className="block bg-gradient-to-r from-cyan-300 via-emerald-300 to-amber-300 bg-clip-text text-transparent">弄脏了。</span>
           </h1>
           <p className="mt-7 max-w-xl text-pretty text-lg leading-8 text-slate-300 sm:text-xl">
-            一款安全优先的原生 Mac 清理工具。目录扫描、垃圾扫描、应用卸载，所有删除先预览，默认只进废纸篓。
+            一款安全优先的原生 Mac 清理工具。目录扫描、垃圾扫描、微信括号副本去重、应用卸载，所有删除先预览，默认只进废纸篓。
           </p>
           <div className="mt-9 flex flex-col gap-3 sm:flex-row">
             <a
@@ -89,7 +96,7 @@ export default function Home() {
               <ExternalLink className="h-4 w-4" aria-hidden="true" />
             </a>
           </div>
-          <p className="mt-4 text-xs text-slate-500">v1.0.0 · macOS 14 Sonoma 或更高版本 · Apple Silicon / Intel</p>
+          <p className="mt-4 text-xs text-slate-500">v1.1.0 · macOS 14 Sonoma 或更高版本 · Apple Silicon / Intel</p>
         </div>
 
         <div className="relative mx-auto w-full max-w-[500px] lg:justify-self-end">
@@ -100,9 +107,10 @@ export default function Home() {
               alt="WhoShitOnMyMac 应用图标"
               className="mx-auto aspect-square w-full max-w-[340px] drop-shadow-[0_30px_45px_rgba(0,0,0,0.45)]"
             />
-            <div className="mt-6 grid grid-cols-3 gap-2 text-center text-[11px] font-medium text-slate-300 sm:text-xs">
+            <div className="mt-6 grid grid-cols-4 gap-2 text-center text-[11px] font-medium text-slate-300 sm:text-xs">
               <span className="rounded-lg border border-white/8 bg-black/15 px-2 py-2.5">扫描</span>
               <span className="rounded-lg border border-white/8 bg-black/15 px-2 py-2.5">清理</span>
+              <span className="rounded-lg border border-white/8 bg-black/15 px-2 py-2.5">微信</span>
               <span className="rounded-lg border border-white/8 bg-black/15 px-2 py-2.5">卸载</span>
             </div>
           </div>
@@ -112,10 +120,10 @@ export default function Home() {
       <section id="features" className="relative border-y border-white/[0.07] bg-white/[0.025] py-24">
         <div className="mx-auto w-full max-w-6xl px-5 sm:px-8">
           <div className="max-w-2xl">
-            <p className="text-xs font-semibold uppercase tracking-[0.2em] text-cyan-300">Three clear answers</p>
+            <p className="text-xs font-semibold uppercase tracking-[0.2em] text-cyan-300">Four clear answers</p>
             <h2 className="mt-4 text-4xl font-semibold tracking-[-0.045em] text-white sm:text-5xl">少一点猜测，多一点证据。</h2>
           </div>
-          <div className="mt-12 grid gap-4 lg:grid-cols-3">
+          <div className="mt-12 grid gap-4 md:grid-cols-2">
             {features.map(({ icon: Icon, eyebrow, title, copy }) => (
               <article key={title} className="rounded-3xl border border-white/[0.08] bg-slate-950/45 p-7">
                 <div className="flex h-11 w-11 items-center justify-center rounded-2xl border border-cyan-200/15 bg-cyan-200/[0.07] text-cyan-200">
