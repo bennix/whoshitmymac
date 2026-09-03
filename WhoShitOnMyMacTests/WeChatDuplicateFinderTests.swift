@@ -54,4 +54,48 @@ struct WeChatDuplicateFinderTests {
         #expect(items.contains { $0.group == .wechatDupes && $0.path.lastPathComponent == "讲义(1).pdf" })
         #expect(items.contains { $0.detail.contains("讲义.pdf") })
     }
+
+    @Test func deselectingWeChatCopyRemovesQueueTask() {
+        let state = AppState()
+        let item = JunkItem(
+            path: URL(fileURLWithPath: "/tmp/wsom-wechat-copy-\(UUID().uuidString).pdf"),
+            bytes: 10,
+            group: .wechatDupes,
+            skipReason: .none,
+            selectedByDefault: false
+        )
+        state.setJunkSelected(item, selected: true, source: "微信")
+        #expect(state.queue.tasks.contains { $0.source == "微信" })
+        #expect(state.selectedJunk.contains(item.id))
+
+        state.setJunkSelected(item, selected: false, source: "微信")
+        #expect(!state.selectedJunk.contains(item.id))
+        #expect(state.queue.tasks.allSatisfy {
+            PathNormalizer.resolve($0.url).path != PathNormalizer.resolve(item.path).path
+        })
+    }
+
+    @Test func clearWeChatSelectionDoesNotDropJunkTasks() {
+        let state = AppState()
+        let wechat = JunkItem(
+            path: URL(fileURLWithPath: "/tmp/wsom-wechat-clear-\(UUID().uuidString).pdf"),
+            bytes: 4,
+            group: .wechatDupes,
+            skipReason: .none,
+            selectedByDefault: false
+        )
+        let junk = JunkItem(
+            path: URL(fileURLWithPath: "/tmp/wsom-junk-keep-\(UUID().uuidString).log"),
+            bytes: 8,
+            group: .logs,
+            skipReason: .none,
+            selectedByDefault: false
+        )
+        state.junkItems = [wechat, junk]
+        state.setJunkSelected(wechat, selected: true, source: "微信")
+        state.setJunkSelected(junk, selected: true, source: "垃圾")
+        state.clearWeChatSelection()
+        #expect(state.queue.tasks.map(\.source) == ["垃圾"])
+        #expect(state.selectedJunk == [junk.id])
+    }
 }

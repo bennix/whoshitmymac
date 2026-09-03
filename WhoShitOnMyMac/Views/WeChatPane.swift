@@ -7,11 +7,15 @@ struct WeChatPane: View {
         state.junkItems.filter { $0.group == .wechatDupes }
     }
 
+    private var selectedCount: Int {
+        items.filter { state.selectedJunk.contains($0.id) && $0.skipReason == .none }.count
+    }
+
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
             Text("微信括号副本")
                 .font(.title2)
-            Text("只处理 `xwechat_files` 里文件名末尾带 (1)/(2) 的附件，并且 MD5 与某份无括号原件相同。标题中间的中文括号（如「（25健康大数据）」）不算副本。建议先退出微信再删除。")
+            Text("只处理 `xwechat_files` 里文件名末尾带 (1)/(2) 的附件，并且 MD5 与某份无括号原件相同。标题中间的中文括号（如「（25健康大数据）」）不算副本。勾选后点「删除所选副本」，只进废纸篓。建议先退出微信再删除。")
                 .font(.callout)
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
@@ -21,9 +25,19 @@ struct WeChatPane: View {
                     .disabled(state.isScanningWeChat)
                 Button("全选副本") { state.selectAllWeChatDupes() }
                     .disabled(state.isScanningWeChat || items.isEmpty)
+                Button("全不选") { state.clearWeChatSelection() }
+                    .disabled(state.isScanningWeChat || selectedCount == 0)
+                Button("删除所选副本") { state.trashSelectedWeChatDupes() }
+                    .disabled(state.isScanningWeChat || state.isTrashing || selectedCount == 0)
+                    .help("只把已勾选的微信副本移到废纸篓，不影响其他待删除项")
                 if state.isScanningWeChat {
                     ProgressView().controlSize(.small)
                     Text("正在比对 MD5…")
+                        .font(.callout)
+                        .foregroundStyle(.secondary)
+                } else if state.isTrashing {
+                    ProgressView().controlSize(.small)
+                    Text("正在移到废纸篓…")
                         .font(.callout)
                         .foregroundStyle(.secondary)
                 }

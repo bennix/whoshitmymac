@@ -97,7 +97,8 @@ final class AppState {
             selectedJunk.remove(item.id)
             let path = PathNormalizer.resolve(item.path).path
             queue.tasks.removeAll {
-                $0.source == "垃圾" && PathNormalizer.resolve($0.url).path == path
+                ($0.source == source || $0.source == "垃圾" || $0.source == "微信")
+                    && PathNormalizer.resolve($0.url).path == path
             }
         }
     }
@@ -147,11 +148,11 @@ final class AppState {
         queue.tasks.removeAll { $0.source == "快照" }
     }
 
-    func runTrash() {
-        guard !isTrashing, !queue.tasks.isEmpty else { return }
+    func runTrash(sources: Set<String>? = nil) {
+        let pendingQueue = queue.filtering(sources: sources)
+        guard !isTrashing, !pendingQueue.tasks.isEmpty else { return }
         isTrashing = true
         lastExecuteFailed = []
-        let pendingQueue = queue
         let before = volumeFree()
         DispatchQueue.global(qos: .userInitiated).async { [weak self] in
             let outcome = TrashRunner().execute(pendingQueue)
@@ -528,6 +529,32 @@ final class AppState {
         for item in junkItems where item.group == .wechatDupes && item.skipReason == .none {
             setJunkSelected(item, selected: true, source: "微信")
         }
+    }
+
+    func clearWeChatSelection() {
+        let listedWechatIDs = Set(junkItems.filter { $0.group == .wechatDupes }.map(\.id))
+        let queuedWechatPaths = Set(
+            queue.tasks.filter { $0.source == "微信" }.map { PathNormalizer.resolve($0.url).path }
+        )
+        selectedJunk = selectedJunk.filter { id in
+            if listedWechatIDs.contains(id) { return false }
+            return !queuedWechatPaths.contains(PathNormalizer.resolve(URL(fileURLWithPath: id)).path)
+        }
+        queue.tasks.removeAll { $0.source == "微信" }
+    }
+
+    func trashSelectedWeChatDupes() {
+        let selected = junkItems.filter {
+            $0.group == .wechatDupes && selectedJunk.contains($0.id) && $0.skipReason == .none
+        }
+        guard !selected.isEmpty else {
+            lastMessage = "请先勾选要删除的微信副本"
+            return
+        }
+        for item in selected {
+            setJunkSelected(item, selected: true, source: "微信")
+        }
+        runTrash(sources: ["微信"])
     }
 
     func volumeFree() -> Int64 {

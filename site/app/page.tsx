@@ -13,7 +13,7 @@ import {
 } from 'lucide-react';
 
 const downloadUrl =
-  'https://github.com/bennix/whoshitmymac/releases/download/v1.1.0/WhoShitOnMyMac-1.1.0.dmg';
+  'https://github.com/bennix/whoshitmymac/releases/download/v1.1.1/WhoShitOnMyMac-1.1.1.dmg';
 
 const features = [
   {
@@ -32,7 +32,7 @@ const features = [
     icon: MessageCircle,
     eyebrow: 'WeChat dupes',
     title: '只删核对过的微信括号副本',
-    copy: '只处理 xwechat_files 里文件名末尾带 (1)/(2) 的附件，并且 MD5 与无括号原件相同。标题中间的中文括号不算副本。',
+    copy: '只处理 xwechat_files 里文件名末尾带 (1)/(2) 的附件，并且 MD5 与无括号原件相同。标题中间的中文括号不算副本。勾选后可单独移到废纸篓。',
   },
   {
     icon: Trash2,
@@ -96,7 +96,7 @@ export default function Home() {
               <ExternalLink className="h-4 w-4" aria-hidden="true" />
             </a>
           </div>
-          <p className="mt-4 text-xs text-slate-500">v1.1.0 · macOS 14 Sonoma 或更高版本 · Apple Silicon / Intel</p>
+          <p className="mt-4 text-xs text-slate-500">v1.1.1 · macOS 14 Sonoma 或更高版本 · Apple Silicon / Intel</p>
         </div>
 
         <div className="relative mx-auto w-full max-w-[500px] lg:justify-self-end">

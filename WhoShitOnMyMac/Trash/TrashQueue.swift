@@ -49,6 +49,13 @@ struct TrashQueue: Sendable {
     func dryRun() -> [TrashTask] {
         tasks
     }
+
+    func filtering(sources: Set<String>?) -> TrashQueue {
+        guard let sources else { return self }
+        var copy = self
+        copy.tasks = tasks.filter { sources.contains($0.source) }
+        return copy
+    }
 }
 
 struct TrashRunner: Sendable {

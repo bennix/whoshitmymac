@@ -79,4 +79,16 @@ struct TrashQueueTests {
 
         #expect(retry == [failedApp])
     }
+
+    @Test func filteringBySourcesKeepsOnlyMatchingTasks() {
+        var queue = TrashQueue()
+        let wechat = URL(fileURLWithPath: "/tmp/讲义(1).pdf")
+        let junk = URL(fileURLWithPath: "/tmp/cache-file")
+        #expect(queue.enqueue(TrashTask(url: wechat, bytes: 1, source: "微信"), appSupport: URL(fileURLWithPath: "/tmp/wsom-as"), whitelist: { _ in false }) == nil)
+        #expect(queue.enqueue(TrashTask(url: junk, bytes: 1, source: "垃圾"), appSupport: URL(fileURLWithPath: "/tmp/wsom-as"), whitelist: { _ in false }) == nil)
+
+        let filtered = queue.filtering(sources: ["微信"])
+        #expect(filtered.tasks.map(\.source) == ["微信"])
+        #expect(queue.tasks.count == 2)
+    }
 }
